@@ -116,3 +116,33 @@ fn gaze_math_matches_upstream() {
         );
     }
 }
+
+#[test]
+fn transformed_neutral_paths_match_upstream_composition() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/transforms-2.7.0.json")).unwrap();
+    assert_eq!(fixture["meta"]["caseCount"], 6048);
+    for case in fixture["cases"].as_array().unwrap() {
+        let seed = case["seed"].as_str().unwrap();
+        let options: blobatar_core::Options =
+            serde_json::from_value(case["options"].clone()).unwrap();
+        let expression: Expression = serde_json::from_value(case["expression"].clone()).unwrap();
+        let avatar = blobatar_core::Avatar::new(seed, &options);
+        let traits = Traits::new(seed, options.normalize, &options.traits);
+        let pose = expression.pose();
+        let idle = idle_at(
+            IdleSeeds::new(&traits),
+            number(case, "time"),
+            number(case, "amplitude"),
+            pose.shake,
+        );
+        close(
+            &json!(blobatar_motion::transform::frame_transforms(
+                &avatar.layout,
+                pose,
+                idle
+            )),
+            &case["transforms"],
+        );
+    }
+}

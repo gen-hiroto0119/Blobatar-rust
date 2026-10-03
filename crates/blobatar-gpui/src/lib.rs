@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
 use blobatar_core::{Avatar, Command, Options, Path};
+use blobatar_motion::transform::{Affine, FrameTransforms};
 use gpui::{
     App, Bounds, IntoElement, PathBuilder, Pixels, RenderOnce, Rgba, Styled, Window, canvas, point,
     px, quad, rgb, size,
 };
 
 pub use gpui;
+mod animated;
+pub use animated::{Animate, AnimatedBlobatar};
 
 /// Share a drawing between rerenders so name-derived geometry is not regenerated.
 pub struct Drawing {
@@ -14,6 +17,7 @@ pub struct Drawing {
     circles: Vec<(f64, f64, f64, Rgba)>,
     backdrop: Option<(Path, Rgba)>,
     body_offset_y: f64,
+    eye_start: usize,
 }
 
 impl Drawing {
@@ -28,6 +32,7 @@ impl Drawing {
             .map(|path| (path, head))
             .collect::<Vec<_>>();
         paths.push((avatar.layout.body_path(), head));
+        let eye_start = paths.len();
         paths.extend(
             avatar
                 .layout
@@ -48,6 +53,7 @@ impl Drawing {
             circles,
             backdrop,
             body_offset_y: avatar.body_offset_y,
+            eye_start,
         }
     }
 }
@@ -60,6 +66,13 @@ fn parse_color(hex: Option<&str>) -> Rgba {
 pub struct Blobatar {
     drawing: Arc<Drawing>,
     size: Pixels,
+    frame: Option<PaintFrame>,
+}
+
+struct PaintFrame {
+    transforms: FrameTransforms,
+    head: Rgba,
+    eye: Rgba,
 }
 
 impl Blobatar {
@@ -76,6 +89,7 @@ impl Blobatar {
         Self {
             drawing,
             size: px(64.0),
+            frame: None,
         }
     }
 
@@ -88,12 +102,34 @@ impl Blobatar {
 impl RenderOnce for Blobatar {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let drawing = self.drawing;
+        let frame = self.frame;
         canvas(
             |_, _, _| (),
             move |bounds, _, window, _| {
                 let scale = f64::from(f32::from(bounds.size.width)) / 100.0;
                 if let Some((path, color)) = &drawing.backdrop {
-                    paint_path(window, bounds, scale, path, *color);
+                    paint_path(window, bounds, scale, path, *color, Affine::IDENTITY);
+                }
+                if let Some(frame) = &frame {
+                    for &(cx, cy, radius, _) in &drawing.circles {
+                        paint_circle(
+                            window,
+                            bounds,
+                            scale,
+                            (cx, cy, radius),
+                            frame.head,
+                            frame.transforms.body,
+                        );
+                    }
+                    for (index, (path, _)) in drawing.paths.iter().enumerate() {
+                        let (transform, color) = if index < drawing.eye_start {
+                            (frame.transforms.body, frame.head)
+                        } else {
+                            (frame.transforms.eyes[index - drawing.eye_start], frame.eye)
+                        };
+                        paint_path(window, bounds, scale, path, color, transform);
+                    }
+                    return;
                 }
                 let bounds = Bounds {
                     origin: bounds.origin
@@ -120,7 +156,7 @@ impl RenderOnce for Blobatar {
                     ));
                 }
                 for (path, color) in &drawing.paths {
-                    paint_path(window, bounds, scale, path, *color);
+                    paint_path(window, bounds, scale, path, *color, Affine::IDENTITY);
                 }
             },
         )
@@ -128,9 +164,18 @@ impl RenderOnce for Blobatar {
     }
 }
 
-fn paint_path(window: &mut Window, bounds: Bounds<Pixels>, scale: f64, path: &Path, color: Rgba) {
-    let position =
-        |x: f64, y: f64| bounds.origin + point(px((x * scale) as f32), px((y * scale) as f32));
+fn paint_path(
+    window: &mut Window,
+    bounds: Bounds<Pixels>,
+    scale: f64,
+    path: &Path,
+    color: Rgba,
+    transform: Affine,
+) {
+    let position = |x: f64, y: f64| {
+        let (x, y) = transform.apply(x, y);
+        bounds.origin + point(px((x * scale) as f32), px((y * scale) as f32))
+    };
     let mut builder = PathBuilder::fill();
     let mut current = (0.0, 0.0);
     let mut start = current;
@@ -177,5 +222,36 @@ fn paint_path(window: &mut Window, bounds: Bounds<Pixels>, scale: f64, path: &Pa
     match builder.build() {
         Ok(path) => window.paint_path(path, color),
         Err(error) => eprintln!("Unable to tessellate avatar path: {error}"),
+    }
+}
+
+fn paint_circle(
+    window: &mut Window,
+    bounds: Bounds<Pixels>,
+    scale: f64,
+    (cx, cy, radius): (f64, f64, f64),
+    color: Rgba,
+    transform: Affine,
+) {
+    let mut builder = PathBuilder::fill();
+    let radii = point(px(radius as f32), px(radius as f32));
+    let right = point(px((cx + radius) as f32), px(cy as f32));
+    let left = point(px((cx - radius) as f32), px(cy as f32));
+    builder.move_to(right);
+    builder.arc_to(radii, px(0.0), false, true, left);
+    builder.arc_to(radii, px(0.0), false, true, right);
+    builder.close();
+    let [a, b, c, d, x, y] = transform.0;
+    builder.transform(gpui::Transform::new(
+        (a * scale) as f32,
+        (b * scale) as f32,
+        (c * scale) as f32,
+        (d * scale) as f32,
+        f32::from(bounds.origin.x) + (x * scale) as f32,
+        f32::from(bounds.origin.y) + (y * scale) as f32,
+    ));
+    match builder.build() {
+        Ok(path) => window.paint_path(path, color),
+        Err(error) => eprintln!("Unable to tessellate avatar circle: {error}"),
     }
 }

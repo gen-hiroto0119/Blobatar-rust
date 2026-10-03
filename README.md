@@ -45,6 +45,8 @@ bun tools/generate-motion-reference.ts .reference --write
 bun tools/generate-motion-reference.ts .reference
 bun tools/generate-expression-reference.ts .reference --write
 bun tools/generate-expression-reference.ts .reference
+bun tools/generate-transform-reference.ts .reference --write
+bun tools/generate-transform-reference.ts .reference
 ```
 
 Review any fixture diff rather than accepting new output to hide a regression.
@@ -56,8 +58,8 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 | Stage | Scope | Status |
 | --- | --- | --- |
 | A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; integrated into native demo |
-| C | GPUI vector component and macOS static image comparison | Ten-shape product demo verified on macOS; full size/surface matrix pending |
-| D | 14 expressions, morph, idle motion, gaze projection | Static pose/tint rendering integrated; motion controller integration pending |
+| C | GPUI vector component and macOS static image comparison | Ten shapes and fourteen static expressions verified on macOS; full size/surface matrix pending |
+| D | 14 expressions, morph, idle motion, gaze projection | Native morph/idle controller added; interactive visual verification and gaze input pending |
 | E | Editor, exports/settings, reusable showcase components | Not implemented |
 | F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
@@ -71,3 +73,15 @@ Unicode seeds × six tone bands (3,360 cases), plus custom-palette SVG/URI cases
 Palette strings are XML-escaped in SVG attributes, a deliberate security
 hardening over upstream for inputs containing markup. Valid palette output is
 unchanged. URI encoding otherwise preserves upstream's raw-Unicode behavior.
+
+`AnimatedBlobatar` retains neutral paths and interpolates the pose and fill instead
+of regenerating traits on each frame. The demo exposes all fourteen expression
+targets, off/hover/always modes, and an explicit reduced-motion toggle. Static and
+reduced-motion modes use the baked drawing and do not schedule continuous frames.
+OS reduced-motion detection, gaze input, offscreen scheduling, keyboard navigation,
+and performance measurements remain incomplete.
+
+The transform corpus contains 6,048 fixed-time cases: three Unicode seeds, three
+shapes, fourteen expressions, sixteen times (including blink boundaries), and
+three amplitudes. It compares native affine composition with the pinned
+upstream SVG transform lists, including seeded eye lean and scale order.

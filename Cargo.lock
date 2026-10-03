@@ -615,6 +615,7 @@ name = "blobatar-gpui"
 version = "0.1.0"
 dependencies = [
  "blobatar-core",
+ "blobatar-motion",
  "gpui",
 ]
 

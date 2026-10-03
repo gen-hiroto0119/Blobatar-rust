@@ -1,9 +1,9 @@
 use blobatar_core::{Avatar, Background, Expression, Options, traits::Override};
 use blobatar_gpui::{
-    Blobatar, Drawing,
+    Animate, AnimatedBlobatar, Blobatar, Drawing,
     gpui::{
-        self, App, Application, Bounds, Context, Render, Window, WindowBounds, WindowOptions, div,
-        prelude::*, px, rgb, size,
+        self, App, Application, Bounds, Context, Entity, Render, Window, WindowBounds,
+        WindowOptions, div, prelude::*, px, rgb, size,
     },
 };
 use std::sync::Arc;
@@ -11,10 +11,14 @@ use std::sync::Arc;
 struct Demo {
     drawings: Vec<Arc<Drawing>>,
     expressions: Vec<(Expression, Arc<Drawing>)>,
+    preview: Entity<AnimatedBlobatar>,
+    selected: Expression,
+    mode: Animate,
+    reduced_motion: bool,
 }
 
 impl Demo {
-    fn new() -> Self {
+    fn new(cx: &mut Context<Self>) -> Self {
         let drawings = [0.1, 0.35, 0.55, 0.65, 0.75, 0.82, 0.89, 0.93, 0.965, 0.99]
             .into_iter()
             .map(|shape| {
@@ -42,17 +46,33 @@ impl Demo {
                 )
             })
             .collect();
+        let preview = cx.new(|_| {
+            AnimatedBlobatar::new(
+                "ひろと",
+                &Options {
+                    background: Some(Background::Kind("squircle".into())),
+                    ..Default::default()
+                },
+            )
+            .size(140.0)
+        });
         Self {
             drawings,
             expressions,
+            preview,
+            selected: Expression::Idle,
+            mode: Animate::Hover,
+            reduced_motion: false,
         }
     }
 }
 
 impl Render for Demo {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
+            .id("demo")
             .size_full()
+            .overflow_y_scroll()
             .bg(rgb(0x111318))
             .text_color(rgb(0xe7eaf0))
             .p_8()
@@ -92,16 +112,120 @@ impl Render for Demo {
                     })),
             )
             .child(
-                div().text_sm().child(
-                    "SVGとネイティブ描画で同じ形・色・表情を共有。動作と操作画面は実装中です。",
-                ),
+                div()
+                    .text_sm()
+                    .child("表情の切り替え / Morph · hover to wake up"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_6()
+                    .items_center()
+                    .child(self.preview.clone())
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .flex_1()
+                            .child(div().flex().flex_wrap().gap_2().children(
+                                Expression::ALL.into_iter().map(|expression| {
+                                    div()
+                                        .id(expression.name())
+                                        .px_3()
+                                        .py_2()
+                                        .rounded_md()
+                                        .cursor_pointer()
+                                        .bg(rgb(if self.selected == expression {
+                                            0x354a70
+                                        } else {
+                                            0x1b1e26
+                                        }))
+                                        .text_sm()
+                                        .child(expression.name())
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.selected = expression;
+                                            this.preview.update(cx, |preview, cx| {
+                                                preview.set_expression(expression, cx)
+                                            });
+                                            cx.notify();
+                                        }))
+                                }),
+                            ))
+                            .child(
+                                div().flex().flex_wrap().gap_2().children(
+                                    [
+                                        (Animate::Never, "停止 / Off"),
+                                        (Animate::Hover, "ホバー / Hover"),
+                                        (Animate::Always, "常時 / Always"),
+                                    ]
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(
+                                        |(index, (mode, label))| {
+                                            div()
+                                                .id(("mode", index))
+                                                .px_3()
+                                                .py_2()
+                                                .rounded_md()
+                                                .cursor_pointer()
+                                                .bg(rgb(if self.mode == mode {
+                                                    0x354a70
+                                                } else {
+                                                    0x1b1e26
+                                                }))
+                                                .text_sm()
+                                                .child(label)
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.mode = mode;
+                                                    this.preview.update(cx, |preview, cx| {
+                                                        preview.set_animate(mode, cx)
+                                                    });
+                                                    cx.notify();
+                                                }))
+                                        },
+                                    ),
+                                ),
+                            )
+                            .child(
+                                div()
+                                    .id("reduced-motion")
+                                    .px_3()
+                                    .py_2()
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .bg(rgb(if self.reduced_motion {
+                                        0x354a70
+                                    } else {
+                                        0x1b1e26
+                                    }))
+                                    .text_sm()
+                                    .child(if self.reduced_motion {
+                                        "動きを減らす: ON / Reduced motion"
+                                    } else {
+                                        "動きを減らす: OFF / Reduced motion"
+                                    })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.reduced_motion = !this.reduced_motion;
+                                        this.preview.update(cx, |preview, cx| {
+                                            preview.set_reduced_motion(this.reduced_motion, cx)
+                                        });
+                                        cx.notify();
+                                    })),
+                            ),
+                    ),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .child("ネイティブ動作の確認用。視線入力・エディター・保存/APIは未実装です。"),
             )
     }
 }
 
 fn main() {
     Application::new().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(980.0), px(720.0)), cx);
+        let bounds = Bounds::centered(None, size(px(1100.0), px(940.0)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -111,7 +235,7 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| Demo::new()),
+            |_, cx| cx.new(Demo::new),
         )
         .expect("open Blobatar window");
         cx.activate(true);

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 blobatar-core = { path = "../blobatar-core" }
+blobatar-motion = { path = "../blobatar-motion" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 gpui = { version = "=0.2.2", default-features = false, features = ["font-kit", "runtime_shaders", "macos-blade"] }
