@@ -90,10 +90,12 @@ impl Clone for XAttrs {
         self.offset = other.offset;
 
         let mut data = mem::replace(&mut self.user_attrs, Box::new([])).into_vec();
+        data.clear();
         data.extend(other.user_attrs.iter().cloned());
         self.user_attrs = data.into_boxed_slice();
 
         data = mem::replace(&mut self.system_attrs, Box::new([])).into_vec();
+        data.clear();
         data.extend(other.system_attrs.iter().cloned());
         self.system_attrs = data.into_boxed_slice();
     }
@@ -119,7 +121,7 @@ impl Iterator for XAttrs {
         let siz = data[0] as usize;
 
         self.offset += siz + 1;
-        if self.offset < self.system_attrs.len() {
+        if self.offset <= self.system_attrs.len() {
             Some(prefix_namespace(
                 OsStr::from_bytes(&data[1..siz + 1]),
                 EXTATTR_NAMESPACE_SYSTEM,
@@ -364,4 +366,45 @@ pub fn list_path(path: &Path) -> io::Result<XAttrs> {
         user_attrs: uservec.into_boxed_slice(),
         offset: 0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::XAttrs;
+    use std::ffi::OsString;
+
+    #[test]
+    fn clone_from_replaces_both_buffers_after_partial_iteration() {
+        let mut source = XAttrs {
+            user_attrs: vec![4, b'u', b's', b'e', b'r'].into_boxed_slice(),
+            system_attrs: vec![3, b'o', b'n', b'e', 3, b't', b'w', b'o'].into_boxed_slice(),
+            offset: 0,
+        };
+        assert_eq!(source.next(), Some(OsString::from("system.one")));
+
+        let mut destination = XAttrs {
+            user_attrs: vec![3, b'o', b'l', b'd'].into_boxed_slice(),
+            system_attrs: vec![4, b'o', b'l', b'd', b'!'].into_boxed_slice(),
+            offset: 0,
+        };
+        destination.clone_from(&source);
+
+        assert_eq!(destination.user_attrs, source.user_attrs);
+        assert_eq!(destination.system_attrs, source.system_attrs);
+        assert_eq!(destination.offset, source.offset);
+        assert_eq!(destination.next(), Some(OsString::from("system.two")));
+        assert_eq!(destination.next(), Some(OsString::from("user.user")));
+    }
+
+    #[test]
+    fn final_system_attribute_keeps_its_namespace() {
+        let mut attrs = XAttrs {
+            user_attrs: Vec::new().into_boxed_slice(),
+            system_attrs: vec![3, b'k', b'e', b'y'].into_boxed_slice(),
+            offset: 0,
+        };
+
+        assert_eq!(attrs.next(), Some(OsString::from("system.key")));
+        assert_eq!(attrs.next(), None);
+    }
 }

@@ -38,6 +38,7 @@ impl Clone for XAttrs {
         self.offset = other.offset;
 
         let mut data = mem::replace(&mut self.data, Box::new([])).into_vec();
+        data.clear();
         data.extend(other.data.iter().cloned());
         self.data = data.into_boxed_slice();
     }
@@ -165,4 +166,29 @@ pub fn list_path(path: &Path) -> io::Result<XAttrs> {
         data: vec.into_boxed_slice(),
         offset: 0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::XAttrs;
+    use std::ffi::OsString;
+
+    #[test]
+    fn clone_from_replaces_buffer_after_partial_iteration() {
+        let mut source = XAttrs {
+            data: b"one\0two\0".to_vec().into_boxed_slice(),
+            offset: 0,
+        };
+        assert_eq!(source.next(), Some(OsString::from("one")));
+
+        let mut destination = XAttrs {
+            data: b"old and longer\0".to_vec().into_boxed_slice(),
+            offset: 0,
+        };
+        destination.clone_from(&source);
+
+        assert_eq!(&*destination.data, &*source.data);
+        assert_eq!(destination.offset, source.offset);
+        assert_eq!(destination.next(), Some(OsString::from("two")));
+    }
 }

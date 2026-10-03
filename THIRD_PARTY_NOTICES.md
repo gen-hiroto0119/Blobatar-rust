@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR OTHER DEALINGS IN THE SOFTWARE.
 Vendored from [Stebalien/xattr](https://github.com/Stebalien/xattr), upstream
 commit `e42c1da499b72103a9c9ef5693ff31f998ad31e6`. The crate is dual-licensed
 under MIT or Apache-2.0; see `vendor/xattr/LICENSE-MIT` and
-`vendor/xattr/LICENSE-APACHE`. The local compatibility patch maps Linux and
-Android missing-attribute errors to `libc::ENODATA`; macOS and BSD retain
-`libc::ENOATTR`.
+`vendor/xattr/LICENSE-APACHE`. Local fixes map Linux and Android
+missing-attribute errors to `libc::ENODATA` while macOS and BSD retain
+`libc::ENOATTR`, clear destination buffers in `XAttrs::clone_from`, and
+preserve the BSD system namespace for its final system attribute.

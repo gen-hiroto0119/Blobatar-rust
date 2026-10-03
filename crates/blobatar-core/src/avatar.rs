@@ -93,14 +93,14 @@ impl Avatar {
             svg.push_str("<path d=\"");
             svg.push_str(&path.to_svg());
             svg.push_str("\" fill=\"");
-            svg.push_str(self.palette.bg.as_deref().unwrap_or_default());
+            push_escaped_attribute_value(&mut svg, self.palette.bg.as_deref().unwrap_or_default());
             svg.push_str("\"/>");
         }
 
         let head = self.palette.head.as_deref().unwrap_or_default();
         let eye = self.palette.eye.as_deref().unwrap_or_default();
         svg.push_str("<g fill=\"");
-        svg.push_str(head);
+        push_escaped_attribute_value(&mut svg, head);
         svg.push_str("\">");
         for petal in &self.layout.petals {
             svg.push_str("<circle cx=\"");
@@ -119,7 +119,7 @@ impl Avatar {
         svg.push_str("<path d=\"");
         svg.push_str(&self.layout.body_path().to_svg());
         svg.push_str("\"/></g><g fill=\"");
-        svg.push_str(eye);
+        push_escaped_attribute_value(&mut svg, eye);
         svg.push_str("\">");
         for path in self.layout.eye_paths() {
             svg.push_str("<path d=\"");
@@ -173,6 +173,19 @@ fn escape_title(title: &str) -> String {
         .replace('>', "&gt;")
 }
 
+fn push_escaped_attribute_value(output: &mut String, value: &str) {
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&apos;"),
+            _ => output.push(character),
+        }
+    }
+}
+
 pub fn backdrop_path(background: Option<&Background>) -> Option<shape::Path> {
     match background {
         None | Some(Background::Enabled(false)) => None,
@@ -192,7 +205,8 @@ pub fn backdrop_path(background: Option<&Background>) -> Option<shape::Path> {
 
 #[cfg(test)]
 mod tests {
-    use super::escape_title;
+    use super::{Avatar, Background, Options, escape_title};
+    use crate::color::Palette;
     use crate::shape::{Command, Path};
 
     #[test]
@@ -216,5 +230,28 @@ mod tests {
     #[test]
     fn escapes_only_the_title_characters_from_the_static_core() {
         assert_eq!(escape_title("<&>\"'"), "&lt;&amp;&gt;\"'");
+    }
+
+    #[test]
+    fn escapes_palette_values_before_svg_attribute_serialization() {
+        let injected = r#"red" onload='alert(1)'&<script>"#;
+        let options = Options {
+            background: Some(Background::Enabled(true)),
+            palette: Some(Palette {
+                bg: Some(injected.to_string()),
+                head: Some(injected.to_string()),
+                eye: Some(injected.to_string()),
+            }),
+            ..Options::default()
+        };
+        let avatar = Avatar::new("unsafe", &options);
+        let svg = avatar.svg(&options);
+        let escaped = r#"red&quot; onload=&apos;alert(1)&apos;&amp;&lt;script&gt;"#;
+
+        assert_eq!(avatar.palette.bg.as_deref(), Some(injected));
+        assert_eq!(avatar.palette.head.as_deref(), Some(injected));
+        assert_eq!(avatar.palette.eye.as_deref(), Some(injected));
+        assert_eq!(svg.matches(&format!("fill=\"{escaped}\"")).count(), 3);
+        assert!(!svg.contains(r#"fill="red" onload"#));
     }
 }
