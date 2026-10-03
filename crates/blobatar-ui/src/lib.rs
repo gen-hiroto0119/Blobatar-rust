@@ -1,3 +1,4 @@
+mod advanced_json;
 pub mod axes;
 pub mod components;
 pub mod editor;

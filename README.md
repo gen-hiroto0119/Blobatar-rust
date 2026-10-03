@@ -20,6 +20,8 @@ motion modes. All-selected **retains the candidate array** (uniform candidate
 selection); Auto removes the override (the original weighted distribution).
 Shape-limited controls use the union of recognized candidate silhouettes.
 Advanced JSON edits the entire trait map without dropping unknown trait keys.
+Unapplied JSON remains a draft across other control changes; successful Apply,
+Reset and settings load replace it with the canonical state.
 
 GPUI text input implements selection, clipboard actions, grapheme navigation and
 IME composition. Tab moves between controls; sliders also accept arrows and
@@ -99,6 +101,8 @@ public hosted service and makes no upstream requests. Ctrl-C shuts it down.
 schema with its `servers` URL set from the request origin, and unknown paths
 return 404. `/avatar/<name>` accepts only `GET` and `HEAD`; other methods return
 405 with `Allow: GET, HEAD`.
+Malformed or duplicate `Host` authorities return negotiated 400 errors. Absolute
+HTTP(S) request origins take precedence over a valid `Host` header.
 
 Avatar names strip only literal `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif` and
 `.webp` suffixes before percent decoding. Literal slashes are rejected;

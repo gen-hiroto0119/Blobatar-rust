@@ -18,6 +18,7 @@ use blobatar_gpui::{
 use rand::Rng;
 
 use crate::{
+    advanced_json::AdvancedJsonDraft,
     axes::{self, Axis, Choice, Group, Kind, SHAPES, TONES},
     editor::EditorState,
     snippet,
@@ -37,6 +38,7 @@ pub struct Editor {
     state: EditorState,
     name: Entity<TextInput>,
     advanced: Entity<TextInput>,
+    advanced_json: AdvancedJsonDraft,
     _name_subscription: Subscription,
     preview: Entity<AnimatedBlobatar>,
     crowd: Vec<Arc<Drawing>>,
@@ -52,7 +54,9 @@ impl Editor {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let state = EditorState::default();
         let name = cx.new(|cx| TextInput::new(state.settings.name.clone(), cx));
-        let advanced = cx.new(|cx| TextInput::new("{}", cx));
+        let advanced_text =
+            serde_json::to_string(&state.settings.options.traits).expect("valid traits");
+        let advanced = cx.new(|cx| TextInput::new(advanced_text.clone(), cx));
         let preview =
             cx.new(|_| AnimatedBlobatar::new(state.seed(), &state.settings.options).size(192.0));
         let subscription = cx.observe(&name, |this, input, cx| {
@@ -66,6 +70,7 @@ impl Editor {
             state,
             name,
             advanced,
+            advanced_json: AdvancedJsonDraft::new(advanced_text),
             _name_subscription: subscription,
             preview,
             crowd: Vec::new(),
@@ -81,6 +86,15 @@ impl Editor {
     }
 
     fn refresh(&mut self, geometry_changed: bool, cx: &mut Context<Self>) {
+        self.refresh_with_advanced_sync(geometry_changed, false, cx);
+    }
+
+    fn refresh_with_advanced_sync(
+        &mut self,
+        geometry_changed: bool,
+        force_advanced_sync: bool,
+        cx: &mut Context<Self>,
+    ) {
         let mode = match self.state.settings.motion {
             Motion::Off => Animate::Never,
             Motion::Hover => Animate::Hover,
@@ -112,8 +126,13 @@ impl Editor {
         self.code = snippet::snippet(&self.state);
         let traits =
             serde_json::to_string(&self.state.settings.options.traits).expect("valid traits");
-        self.advanced
-            .update(cx, |input, cx| input.set_text(traits, cx));
+        let advanced = self.advanced.clone();
+        let draft = &mut self.advanced_json;
+        advanced.update(cx, |input, cx| {
+            if let Some(traits) = draft.sync(input.text(), traits, force_advanced_sync) {
+                input.set_text(traits, cx);
+            }
+        });
         cx.notify();
     }
 
@@ -418,7 +437,7 @@ impl Editor {
                         this.state.settings = settings;
                         let name = this.state.settings.name.clone();
                         this.name.update(cx, |input, cx| input.set_text(name, cx));
-                        this.refresh(true, cx);
+                        this.refresh_with_advanced_sync(true, true, cx);
                         this.status = "読込完了 / Loaded".into();
                     }
                     Ok(None) => this.status = "取消 / Cancelled".into(),
@@ -476,7 +495,7 @@ impl Editor {
                         cx,
                         |this, _, cx| {
                             this.state.reset();
-                            this.refresh(true, cx);
+                            this.refresh_with_advanced_sync(true, true, cx);
                         },
                     )),
             )
@@ -643,7 +662,9 @@ impl Editor {
             .child(
                 div()
                     .text_sm()
-                    .child("詳細traits / Advanced JSON · 全traitキーを入力できます"),
+                    .child(
+                        "詳細traits / Advanced JSON · 全traitキーを入力できます · 未適用JSONはドラフトとして保持 / Unapplied JSON stays as a draft",
+                    ),
             )
             .child(self.advanced.clone())
             .child(self.button(
@@ -656,7 +677,7 @@ impl Editor {
                     match this.state.apply_traits_json(&json) {
                         Ok(()) => {
                             this.status = "適用完了 / Applied".into();
-                            this.refresh(true, cx);
+                            this.refresh_with_advanced_sync(true, true, cx);
                         }
                         Err(error) => {
                             this.status = format!("JSONエラー / Invalid traits: {error}");

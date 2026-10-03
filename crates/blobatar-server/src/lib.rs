@@ -4,7 +4,7 @@ mod parse;
 use axum::{
     Router,
     body::Body,
-    http::{Method, Request, Response, StatusCode, header},
+    http::{Method, Request, Response, StatusCode, header, uri::Authority},
 };
 use blobatar_core::Avatar;
 use error::ApiError;
@@ -20,25 +20,24 @@ pub fn router() -> Router {
 
 async fn handle(request: Request<Body>) -> Response<Body> {
     let method = request.method().clone();
-    let url = request_url(&request);
-    let path = url.as_ref().map(Url::path).unwrap_or("/");
-    let mut response = if path == "/openapi.json" {
-        openapi_response(
-            url.as_ref()
-                .map(|url| url.origin().ascii_serialization())
-                .as_deref()
-                .unwrap_or("http://127.0.0.1:3000"),
-        )
-    } else if path == "/" {
-        help_response()
-    } else if let Some(raw_name) = path.strip_prefix("/avatar/") {
-        match avatar_response(&request, &method, &url, raw_name) {
-            Ok(response) => response,
-            Err(error) => error::response(&error, request.headers(), USAGE),
+    let mut response = match request_url(&request) {
+        Ok(url) => {
+            let path = url.path();
+            if path == "/openapi.json" {
+                openapi_response(&url.origin().ascii_serialization())
+            } else if path == "/" {
+                help_response()
+            } else if let Some(raw_name) = path.strip_prefix("/avatar/") {
+                match avatar_response(&request, &method, &url, raw_name) {
+                    Ok(response) => response,
+                    Err(error) => error::response(&error, request.headers(), USAGE),
+                }
+            } else {
+                let error = ApiError::not_found(path);
+                error::response(&error, request.headers(), USAGE)
+            }
         }
-    } else {
-        let error = ApiError::not_found(path);
-        error::response(&error, request.headers(), USAGE)
+        Err(error) => error::response(&error, request.headers(), USAGE),
     };
 
     if method == Method::HEAD {
@@ -51,7 +50,7 @@ async fn handle(request: Request<Body>) -> Response<Body> {
 fn avatar_response(
     request: &Request<Body>,
     method: &Method,
-    url: &Option<Url>,
+    url: &Url,
     raw_name: &str,
 ) -> Result<Response<Body>, ApiError> {
     if method != Method::GET && method != Method::HEAD {
@@ -61,7 +60,7 @@ fn avatar_response(
         return Ok(help_response());
     }
 
-    let parsed = parse::parse_options(url.as_ref().and_then(Url::query))?;
+    let parsed = parse::parse_options(url.query())?;
     let name = parse::parse_name(raw_name)?;
     let avatar = Avatar::with_generation(&name, &parsed.options, parsed.generation);
     let svg = avatar.svg(&parsed.options);
@@ -94,23 +93,76 @@ fn avatar_response(
         .expect("valid avatar response"))
 }
 
-fn request_url(request: &Request<Body>) -> Option<Url> {
+fn request_url(request: &Request<Body>) -> Result<Url, ApiError> {
     let uri = request.uri();
+    let supplied_host = request_host(request)?;
     if uri.scheme().is_some() {
-        return Url::parse(&uri.to_string()).ok();
+        let authority = uri.authority().ok_or_else(invalid_host)?;
+        validate_authority(authority.as_str())?;
+        let url = Url::parse(&uri.to_string()).map_err(|_| invalid_host())?;
+        if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+            return Err(invalid_host());
+        }
+        return Ok(url);
     }
 
-    let authority = request
-        .headers()
-        .get(header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .or_else(|| uri.authority().map(|authority| authority.as_str()))
+    let authority = supplied_host
+        .or_else(|| uri.authority().map(Authority::as_str))
         .unwrap_or("127.0.0.1:3000");
+    let authority = validate_authority(authority)?;
     let path_and_query = uri
         .path_and_query()
         .map(|value| value.as_str())
         .unwrap_or("/");
-    Url::parse(&format!("http://{authority}{path_and_query}")).ok()
+    Url::parse(&format!("http://{}{path_and_query}", authority.as_str()))
+        .map_err(|_| invalid_host())
+}
+
+fn request_host(request: &Request<Body>) -> Result<Option<&str>, ApiError> {
+    let mut hosts = request.headers().get_all(header::HOST).iter();
+    let Some(host) = hosts.next() else {
+        return Ok(None);
+    };
+    if hosts.next().is_some() {
+        return Err(invalid_host());
+    }
+    let host = host.to_str().map_err(|_| invalid_host())?;
+    validate_authority(host)?;
+    Ok(Some(host))
+}
+
+fn validate_authority(value: &str) -> Result<Authority, ApiError> {
+    if value.is_empty()
+        || value.ends_with(':')
+        || value.chars().any(|character| {
+            character.is_whitespace() || matches!(character, '/' | '\\' | '?' | '#' | '@')
+        })
+    {
+        return Err(invalid_host());
+    }
+    let authority = value.parse::<Authority>().map_err(|_| invalid_host())?;
+    if authority.host().is_empty()
+        || authority
+            .port()
+            .is_some_and(|_| authority.port_u16().is_none())
+    {
+        return Err(invalid_host());
+    }
+    let url = Url::parse(&format!("http://{value}/")).map_err(|_| invalid_host())?;
+    if url.host().is_none()
+        || url.username() != ""
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(invalid_host());
+    }
+    Ok(authority)
+}
+
+fn invalid_host() -> ApiError {
+    ApiError::bad_request("invalid_host", "Invalid request host")
 }
 
 fn help_response() -> Response<Body> {
