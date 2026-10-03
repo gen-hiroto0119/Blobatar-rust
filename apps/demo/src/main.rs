@@ -7,6 +7,7 @@ use blobatar_gpui::{
     },
 };
 use std::{sync::Arc, time::Duration};
+mod components;
 mod matrix;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -317,6 +318,9 @@ impl Render for Demo {
             .flex_col()
             .gap_6()
             .child(div().text_2xl().child("Blobatar / Native Rust"))
+            .child(div().id("open-components").px_3().py_2().rounded_md().bg(rgb(0x354a70)).cursor_pointer()
+                .child("再利用部品を開く / Open components")
+                .on_click(cx.listener(|_, _, _, cx| { open_components(cx); })))
             .child(div().id("open-editor").px_3().py_2().rounded_md().bg(rgb(0x354a70)).cursor_pointer()
                 .child("エディターを開く / Open editor")
                 .on_click(cx.listener(|_, _, _, cx| { open_editor(cx); })))
@@ -469,7 +473,8 @@ impl Render for Demo {
 fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let editor = args.as_slice() == ["--editor"];
-    let matrix = match matrix::Matrix::from_args(if editor { &[] } else { &args }) {
+    let components = args.as_slice() == ["--components"];
+    let matrix = match matrix::Matrix::from_args(if editor || components { &[] } else { &args }) {
         Ok(matrix) => matrix,
         Err(message) => {
             eprintln!("{message}");
@@ -478,6 +483,11 @@ fn main() {
     };
     Application::new().run(move |cx: &mut App| {
         blobatar_ui::init(cx);
+        if components {
+            open_components(cx);
+            cx.activate(true);
+            return;
+        }
         if editor {
             open_editor(cx);
             cx.activate(true);
@@ -522,4 +532,20 @@ fn open_editor(cx: &mut App) {
         |_, cx| cx.new(blobatar_ui::Editor::new),
     )
     .expect("open Blobatar editor");
+}
+
+fn open_components(cx: &mut App) {
+    let bounds = Bounds::centered(None, size(px(1180.0), px(920.0)), cx);
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(gpui::TitlebarOptions {
+                title: Some("Blobatar Components".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        |window, cx| cx.new(|cx| components::Components::new(window, cx)),
+    )
+    .expect("open Blobatar components");
 }

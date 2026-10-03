@@ -51,6 +51,35 @@ cargo test -p blobatar-ui --test reference
 cargo test -p blobatar-export
 ```
 
+## Reusable native components
+
+Open **再利用部品を開く / Open components** in the original demo, or run
+`cargo run -p blobatar-demo -- --components`. The gallery uses the public
+`blobatar_ui::components` views with sample data, not a second implementation.
+
+- `ProfileAvatar`: optional image with a deterministic missing/failed-image fallback.
+- `PresenceAvatar`: online/away/offline/thinking, expression transition and unread
+  badges (zero hidden, counts above 99 shown as `99+`).
+- `AgentList`: caller-provided agents, working count, selected name and
+  `AgentSelected` events; click or Enter/Space selects a row.
+- `UserTable`: caller-provided rows, ID-based static avatars and a bounded drawing
+  cache. GPUI's uniform list renders visible rows; the gallery supplies 10,000
+  sample users. Rename changes the display name without changing the avatar seed.
+- `GroupChat`: consecutive-sender grouping, first-message headings/times,
+  member stack, overflow count and typing indicator.
+- `PasswordField`: masked text, Unicode/IME-aware caret geometry and scroll/resize
+  updates. Focused/hidden follows the caret, unfocused follows the pointer,
+  visible uses Sleepy with Rest gaze. Its input is in-memory only, never included
+  in settings, logs, exports, fixtures or demo network requests. Copy/cut do not
+  put secret text on the clipboard, even while revealed. `PasswordEdited` carries
+  no text; applications must explicitly read `value` if they need it.
+
+These views reuse `AnimatedBlobatar`'s system reduced-motion behavior. Keyboard
+focus is explicit, but GPUI 0.2.2 has no integrated screen-reader semantics in this
+implementation: labels alone are **not** VoiceOver support. OS accessibility,
+native interaction acceptance and measured large-table performance remain open.
+Use sample strings, not real credentials, when testing the password demo.
+
 ## Compatibility baseline
 
 - Generation 2: `blobatar 2.7.0`, commit
@@ -118,7 +147,7 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 | A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; integrated into native demo |
 | C | GPUI vector component and macOS static image comparison | Ten shapes, fourteen static expressions and the 400-avatar size/background/surface matrix compared on macOS; see [comparison notes](docs/render-matrix.md) |
 | D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; gaze adapter wired, native gaze/hover verification pending |
-| E | Editor, exports/settings, reusable showcase components | Generation 2 editor and exports/settings implemented; native interaction acceptance and reusable showcase components pending |
+| E | Editor, exports/settings, reusable showcase components | Generation 2 editor, exports/settings and six reusable native views implemented; native interaction acceptance pending |
 | F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
 

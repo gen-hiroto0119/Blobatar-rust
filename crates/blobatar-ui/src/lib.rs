@@ -1,4 +1,5 @@
 pub mod axes;
+pub mod components;
 pub mod editor;
 pub mod native;
 pub mod snippet;
