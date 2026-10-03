@@ -20,11 +20,10 @@ use rand::Rng;
 use crate::{
     axes::{self, Axis, Choice, Group, Kind, SHAPES, TONES},
     editor::EditorState,
-    snippet::{self, Api},
+    snippet,
     text_input::TextInput,
 };
 
-const ENDPOINT: &str = "http://127.0.0.1:3000/avatar/";
 const CROWD: [&str; 7] = ["ひろと", "Alex", "Samira", "María", "李明", "Noor", "Kai"];
 
 #[derive(Clone, Copy)]
@@ -44,7 +43,6 @@ pub struct Editor {
     fit: BTreeMap<String, f64>,
     axis_bounds: BTreeMap<&'static str, Bounds<Pixels>>,
     dragging: Option<&'static Axis>,
-    api: Api,
     code: String,
     status: String,
     busy: bool,
@@ -74,7 +72,6 @@ impl Editor {
             fit: BTreeMap::new(),
             axis_bounds: BTreeMap::new(),
             dragging: None,
-            api: Api::Rust,
             code: String::new(),
             status: String::new(),
             busy: false,
@@ -112,7 +109,7 @@ impl Editor {
             })
             .collect();
         self.fit = self.state.fit_readback();
-        self.code = snippet::snippet(self.api, &self.state, ENDPOINT);
+        self.code = snippet::snippet(&self.state);
         let traits =
             serde_json::to_string(&self.state.settings.options.traits).expect("valid traits");
         self.advanced
@@ -435,28 +432,96 @@ impl Editor {
     }
 
     fn preview_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div().id("editor-preview").w(px(420.0)).flex_shrink_0().h_full().overflow_y_scroll().flex().flex_col().gap_3()
+        div()
+            .id("editor-preview")
+            .w(px(420.0))
+            .flex_shrink_0()
+            .h_full()
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .gap_3()
             .child(div().text_sm().child("名前 / Name · 日本語IME対応"))
             .child(self.name.clone())
-            .child(div().flex().gap_2()
-                .child(self.button("shuffle", "名前を変更 / Shuffle", false, cx, |this, _, cx| {
-                    let mut rng = rand::thread_rng();
-                    let next = loop { let next = format!("{}{}", CROWD[rng.gen_range(0..CROWD.len())], rng.gen_range(10..100)); if next != this.state.settings.name { break next; } };
-                    this.state.shuffle_to(next.clone()); this.name.update(cx, |input, cx| input.set_text(next, cx)); this.refresh(true, cx);
-                }))
-                .child(self.button("reset", "固定を解除 / Reset", false, cx, |this, _, cx| { this.state.reset(); this.refresh(true, cx); })))
-            .child(div().flex().justify_center().p_4().child(self.preview.clone()))
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(self.button(
+                        "shuffle",
+                        "名前を変更 / Shuffle",
+                        false,
+                        cx,
+                        |this, _, cx| {
+                            let mut rng = rand::thread_rng();
+                            let next = loop {
+                                let next = format!(
+                                    "{}{}",
+                                    CROWD[rng.gen_range(0..CROWD.len())],
+                                    rng.gen_range(10..100)
+                                );
+                                if next != this.state.settings.name {
+                                    break next;
+                                }
+                            };
+                            this.state.shuffle_to(next.clone());
+                            this.name.update(cx, |input, cx| input.set_text(next, cx));
+                            this.refresh(true, cx);
+                        },
+                    ))
+                    .child(self.button(
+                        "reset",
+                        "固定を解除 / Reset",
+                        false,
+                        cx,
+                        |this, _, cx| {
+                            this.state.reset();
+                            this.refresh(true, cx);
+                        },
+                    )),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_center()
+                    .p_4()
+                    .child(self.preview.clone()),
+            )
             .child(div().text_sm().child("同じ設定・7つの名前 / Crowd"))
-            .child(div().flex().gap_1().children(self.crowd.iter().enumerate().map(|(index, drawing)| {
-                div().flex().flex_col().items_center().child(Blobatar::from_drawing(drawing.clone()).size(54.0)).child(div().text_xs().child(CROWD[index]))
-            })))
-            .child(div().flex().flex_wrap().gap_2().children(Api::ALL.into_iter().map(|api| self.button(format!("api-{}", api.name()), api.name(), self.api == api, cx, move |this, _, cx| {
-                this.api = api; this.code = snippet::snippet(api, &this.state, ENDPOINT); cx.notify();
-            }))))
-            .child(self.button("copy-code", "コードをコピー / Copy code", false, cx, |this, _, cx| { cx.write_to_clipboard(ClipboardItem::new_string(this.code.clone())); this.status = "コピー完了 / Copied".into(); cx.notify(); }))
-            .when(self.api != Api::Rust, |panel| panel.child(div().text_xs().text_color(rgb(0xf4c76b)).child("本家形式: name・traits・motionのみ。背景・表情など全設定はRust/GPUIまたは設定JSONへ。")))
-            .when(self.api == Api::Http, |panel| panel.child(div().text_xs().child("自前サーバー向けのURL例です。HTTP APIはまだ未実装です。")))
-            .child(div().id("editor-code").p_3().rounded_md().bg(rgb(0x151b26)).text_xs().child(self.code.clone()))
+            .child(
+                div()
+                    .flex()
+                    .gap_1()
+                    .children(self.crowd.iter().enumerate().map(|(index, drawing)| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .child(Blobatar::from_drawing(drawing.clone()).size(54.0))
+                            .child(div().text_xs().child(CROWD[index]))
+                    })),
+            )
+            .child(div().text_sm().child("生成コード / Rust/GPUI"))
+            .child(self.button(
+                "copy-code",
+                "Rustコードをコピー / Copy Rust code",
+                false,
+                cx,
+                |this, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(this.code.clone()));
+                    this.status = "コピー完了 / Copied".into();
+                    cx.notify();
+                },
+            ))
+            .child(
+                div()
+                    .id("editor-code")
+                    .p_3()
+                    .rounded_md()
+                    .bg(rgb(0x151b26))
+                    .text_xs()
+                    .child(self.code.clone()),
+            )
     }
 
     fn controls(&self, cx: &mut Context<Self>) -> impl IntoElement {

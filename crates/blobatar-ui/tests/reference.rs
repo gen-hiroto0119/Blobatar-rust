@@ -3,7 +3,7 @@ use blobatar_export::Motion;
 use blobatar_ui::{
     axes::{self, AXES, SHAPES, TONES},
     editor::EditorState,
-    snippet::{self, Api},
+    snippet,
 };
 use serde_json::Value;
 
@@ -104,31 +104,6 @@ fn editor_readback_and_locks_match_upstream() {
 }
 
 #[test]
-fn upstream_snippets_match_exactly() {
-    for (index, case) in fixture()["snippets"].as_array().unwrap().iter().enumerate() {
-        let api = Api::ALL
-            .into_iter()
-            .find(|api| api.name() == case["api"].as_str().unwrap())
-            .unwrap();
-        let mut state = EditorState::default();
-        state.settings.name = case["name"].as_str().unwrap().into();
-        state.settings.motion = match case["motion"].as_str() {
-            Some("hover") => Motion::Hover,
-            Some("always") => Motion::Always,
-            _ => Motion::Off,
-        };
-        state
-            .apply_traits_json(&case["pinned"].to_string())
-            .unwrap();
-        assert_eq!(
-            snippet::snippet(api, &state, "https://blobatar.dev/avatar/"),
-            case["output"].as_str().unwrap(),
-            "case {index}"
-        );
-    }
-}
-
-#[test]
 fn selection_shuffle_unlock_and_reset_share_one_override_map() {
     let mut state = EditorState::default();
     for choice in SHAPES.iter().rev() {
@@ -165,7 +140,7 @@ fn rust_snippet_serialized_options_reproduce_the_preview() {
         state
             .apply_traits_json(r#"{"shape":[0.11,0.965],"eye.gap":0.751,"hue":0.123}"#)
             .unwrap();
-        let code = snippet::snippet(Api::Rust, &state, "unused");
+        let code = snippet::snippet(&state);
         let raw = code.split("serde_json::from_str(r").nth(1).unwrap();
         let (hashes, body) = raw.split_once('"').unwrap();
         let (json, _) = body.split_once(&format!("\"{hashes}")).unwrap();
@@ -175,6 +150,31 @@ fn rust_snippet_serialized_options_reproduce_the_preview() {
             state.avatar().svg(&state.settings.options)
         );
     }
-    let code = snippet::snippet(Api::Rust, &EditorState::default(), "unused");
+    let code = snippet::snippet(&EditorState::default());
     assert!(!code.contains("traits"));
+}
+
+#[test]
+fn rust_snippet_preserves_name_and_playback_settings() {
+    for (motion, mode) in [
+        (Motion::Off, "Never"),
+        (Motion::Hover, "Hover"),
+        (Motion::Always, "Always"),
+    ] {
+        for reduced in [false, true] {
+            for name in ["", "ひろと \"# 🦀\n\\"] {
+                let mut state = EditorState::default();
+                state.settings.name = name.into();
+                state.settings.motion = motion;
+                state.settings.reduced_motion = reduced;
+                let code = snippet::snippet(&state);
+                assert!(code.contains(&format!(
+                    "AnimatedBlobatar::new({:?}, &options)",
+                    state.seed()
+                )));
+                assert!(code.contains(&format!("set_animate(Animate::{mode}, cx)")));
+                assert!(code.contains(&format!("set_reduced_motion({reduced}, cx)")));
+            }
+        }
+    }
 }

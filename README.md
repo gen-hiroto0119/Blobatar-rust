@@ -33,16 +33,19 @@ options, expressions, candidate arrays, motion and manual reduced motion.
 Unsupported generations/schemas and invalid JSON are rejected without replacing
 the current editor state. Generation 1 settings will be added with that renderer.
 
-The six upstream framework formats, string and HTTP snippets preserve the pinned
-editor's name/traits/motion surface. They do **not** encode background, expression
-or other additional options; the UI warns about this. Rust/GPUI and settings JSON
-carry the full configuration. The HTTP example defaults to a **local** endpoint,
-not the public Blobatar service; the server is not implemented yet. The Rust
-snippet belongs in a fallible function with a GPUI context (see the generator
-example). Runtime rendering, export and snippet generation use Rust only.
+Code generation supports **Rust/GPUI only**, as requested. The editor displays
+one Rust snippet and a **Rustコードをコピー / Copy Rust code** button, without
+framework or HTTP snippet selectors. Rust/GPUI output and settings JSON carry
+the full configuration. The snippet belongs in a fallible function with a GPUI
+context (see the generator example). SVG/PNG/settings exports and the standalone
+avatar HTTP API are separate from code generation and remain in scope.
+Runtime rendering, export and snippet generation use Rust only.
 
-Frozen editor references cover 10,624 picker transitions, 315 readback states and
-720 upstream snippets. Regenerate only against the pinned, clean checkout:
+Frozen editor tests cover 10,624 picker transitions and 315 readback states.
+The fixture retains 720 historical upstream web snippets as reference data;
+those formats are no longer generated or tested as supported outputs. Rust
+snippet tests check preview parity and name/motion/reduced-motion preservation.
+Regenerate only against the pinned, clean checkout:
 
 ```sh
 bun tools/generate-editor-reference.ts ../blobatar-reference --write
