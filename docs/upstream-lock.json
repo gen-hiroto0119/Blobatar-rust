@@ -1,0 +1,24 @@
+{
+  "generation2": {
+    "repository": "https://github.com/Alain00/blobatar",
+    "commit": "a7fd546ebede49d0a9fa638945b9e534489782a2",
+    "package": "blobatar",
+    "version": "2.7.0",
+    "source": "packages/blobatar/src",
+    "license": "MIT"
+  },
+  "legacyFixture": {
+    "path": "packages/flutter/test/fixtures/reference-vectors.json",
+    "version": "2.4.0",
+    "exportedWith": "16faea0a938f85e0d7612724aafadf98909739e4",
+    "retrievedFromCommit": "a7fd546ebede49d0a9fa638945b9e534489782a2",
+    "complete": true
+  },
+  "generation1": {
+    "package": "blobatar",
+    "version": "1.0.0",
+    "resolutionSource": "bun.lock at generation2.commit",
+    "implemented": false
+  },
+  "gpui": { "version": "0.2.2" }
+}

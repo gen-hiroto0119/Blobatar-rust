@@ -1,0 +1,14 @@
+[workspace]
+members = ["crates/blobatar-core", "crates/blobatar-motion", "crates/blobatar-gpui", "apps/demo"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/gen-hiroto0119/Blobatar-rust"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+unicode-normalization = "=0.1.24"
