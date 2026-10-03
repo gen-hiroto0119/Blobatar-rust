@@ -43,6 +43,8 @@ bun tools/generate-reference.ts .reference --write
 bun tools/generate-reference.ts .reference
 bun tools/generate-motion-reference.ts .reference --write
 bun tools/generate-motion-reference.ts .reference
+bun tools/generate-expression-reference.ts .reference --write
+bun tools/generate-expression-reference.ts .reference
 ```
 
 Review any fixture diff rather than accepting new output to hide a regression.
@@ -53,12 +55,19 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 
 | Stage | Scope | Status |
 | --- | --- | --- |
-| A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; demo integration in progress |
-| C | GPUI vector component and macOS static image comparison | Component implemented; product validation pending |
-| D | 14 expressions, morph, idle motion, gaze projection | Pure math implemented; rendering/controller integration pending |
+| A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; integrated into native demo |
+| C | GPUI vector component and macOS static image comparison | Ten-shape product demo verified on macOS; full size/surface matrix pending |
+| D | 14 expressions, morph, idle motion, gaze projection | Static pose/tint rendering integrated; motion controller integration pending |
 | E | Editor, exports/settings, reusable showcase components | Not implemented |
 | F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
 
 Static SVG output is an intermediate milestone, not the desktop demo or final
 application. Linux test success is not proof of a macOS build or launch.
+
+Static expressions use `Options { expression: Some(Expression::Happy), ..Default::default() }`.
+The expression reference corpus covers ten shapes × fourteen expressions × four
+Unicode seeds × six tone bands (3,360 cases), plus custom-palette SVG/URI cases.
+Palette strings are XML-escaped in SVG attributes, a deliberate security
+hardening over upstream for inputs containing markup. Valid palette output is
+unchanged. URI encoding otherwise preserves upstream's raw-Unicode behavior.

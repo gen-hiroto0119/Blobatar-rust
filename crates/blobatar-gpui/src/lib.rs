@@ -13,6 +13,7 @@ pub struct Drawing {
     paths: Vec<(Path, Rgba)>,
     circles: Vec<(f64, f64, f64, Rgba)>,
     backdrop: Option<(Path, Rgba)>,
+    body_offset_y: f64,
 }
 
 impl Drawing {
@@ -46,6 +47,7 @@ impl Drawing {
             paths,
             circles,
             backdrop,
+            body_offset_y: avatar.body_offset_y,
         }
     }
 }
@@ -93,6 +95,11 @@ impl RenderOnce for Blobatar {
                 if let Some((path, color)) = &drawing.backdrop {
                     paint_path(window, bounds, scale, path, *color);
                 }
+                let bounds = Bounds {
+                    origin: bounds.origin
+                        + point(px(0.0), px((drawing.body_offset_y * scale) as f32)),
+                    size: bounds.size,
+                };
                 for &(cx, cy, radius, color) in &drawing.circles {
                     // A circular native quad preserves circles rather than substituting superellipses.
                     let radius = px((radius * scale) as f32);

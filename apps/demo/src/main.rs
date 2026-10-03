@@ -1,4 +1,4 @@
-use blobatar_core::{Avatar, Background, Options, traits::Override};
+use blobatar_core::{Avatar, Background, Expression, Options, traits::Override};
 use blobatar_gpui::{
     Blobatar, Drawing,
     gpui::{
@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 struct Demo {
     drawings: Vec<Arc<Drawing>>,
+    expressions: Vec<(Expression, Arc<Drawing>)>,
 }
 
 impl Demo {
@@ -27,7 +28,24 @@ impl Demo {
                 Arc::new(Drawing::new(&Avatar::new("ひろと", &options), &options))
             })
             .collect();
-        Self { drawings }
+        let expressions = Expression::ALL
+            .into_iter()
+            .map(|expression| {
+                let options = Options {
+                    expression: Some(expression),
+                    background: Some(Background::Kind("squircle".into())),
+                    ..Default::default()
+                };
+                (
+                    expression,
+                    Arc::new(Drawing::new(&Avatar::new("ひろと", &options), &options)),
+                )
+            })
+            .collect();
+        Self {
+            drawings,
+            expressions,
+        }
     }
 }
 
@@ -45,26 +63,45 @@ impl Render for Demo {
             .child(
                 div()
                     .text_sm()
-                    .child("生成2 · 10 shapes · GPUI vector paths"),
+                    .child("生成2 · 10形状 / Shapes · GPUI vector paths"),
             )
             .child(
-                div().flex().flex_wrap().gap_4().children(
+                div().flex().flex_wrap().gap_2().children(
                     self.drawings
                         .iter()
-                        .map(|drawing| Blobatar::from_drawing(drawing.clone()).size(128.0)),
+                        .map(|drawing| Blobatar::from_drawing(drawing.clone()).size(80.0)),
                 ),
             )
+            .child(div().text_sm().child("14の静止表情 / Static expressions"))
             .child(
                 div()
-                    .text_sm()
-                    .child("同じ幾何データからSVGとネイティブ描画を生成します。"),
+                    .flex()
+                    .flex_wrap()
+                    .gap_3()
+                    .children(self.expressions.iter().map(|(expression, drawing)| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_2()
+                            .p_2()
+                            .rounded_lg()
+                            .bg(rgb(0x1b1e26))
+                            .child(Blobatar::from_drawing(drawing.clone()).size(100.0))
+                            .child(div().text_xs().child(expression.name()))
+                    })),
+            )
+            .child(
+                div().text_sm().child(
+                    "SVGとネイティブ描画で同じ形・色・表情を共有。動作と操作画面は実装中です。",
+                ),
             )
     }
 }
 
 fn main() {
     Application::new().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(880.0), px(520.0)), cx);
+        let bounds = Bounds::centered(None, size(px(980.0), px(720.0)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

@@ -97,6 +97,42 @@ pub enum Expression {
 }
 
 impl Expression {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Happy => "happy",
+            Self::Sad => "sad",
+            Self::Mad => "mad",
+            Self::Surprised => "surprised",
+            Self::Wink => "wink",
+            Self::Sleepy => "sleepy",
+            Self::Smug => "smug",
+            Self::Unsure => "unsure",
+            Self::Scared => "scared",
+            Self::Love => "love",
+            Self::Shy => "shy",
+            Self::Sick => "sick",
+            Self::Thinking => "thinking",
+        }
+    }
+
+    pub fn palette(self, base: &crate::color::Palette) -> crate::color::Palette {
+        use crate::color::{self, BILE, BLUSH, HOT, ROSE};
+        let target = match self {
+            Self::Mad => HOT,
+            Self::Love => ROSE,
+            Self::Shy => BLUSH,
+            Self::Sick => BILE,
+            _ => return base.clone(),
+        };
+        let mut palette = base.clone();
+        if let (Some(head), Some(eye)) = (&base.head, &base.eye) {
+            let (hot_head, hot_eye) = color::tinted(head, eye, target);
+            palette.head = Some(color::mix_hex(head, &hot_head, self.pose().heat));
+            palette.eye = Some(color::mix_hex(eye, &hot_eye, self.pose().heat));
+        }
+        palette
+    }
     pub const ALL: [Self; 14] = [
         Self::Idle,
         Self::Happy,
@@ -292,4 +328,24 @@ impl Expression {
             },
         }
     }
+}
+
+pub fn bake(layout: &crate::Layout, pose: Pose) -> crate::Layout {
+    let mut result = layout.clone();
+    for (index, eye) in result.eyes.iter_mut().enumerate() {
+        let right = index != 0;
+        let side = if right { 1.0 } else { -1.0 };
+        eye.cx += pose.eye_offset_x * side;
+        eye.cy += pose.eye_offset_y
+            + if right {
+                pose.right_offset_y_delta
+            } else {
+                0.0
+            };
+        eye.rx *= pose.eye_scale_x + if right { pose.right_scale_x_delta } else { 0.0 };
+        eye.ry *= pose.eye_scale_y + if right { pose.right_scale_y_delta } else { 0.0 };
+        eye.rot = eye.rot * (1.0 - pose.lean_lock)
+            + (pose.eye_tilt + if right { pose.right_tilt_delta } else { 0.0 }) * side;
+    }
+    result
 }

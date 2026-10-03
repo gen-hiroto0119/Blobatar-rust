@@ -4,6 +4,7 @@ use crate::{
     color::{self, Palette},
     hash::is_ecmascript_whitespace,
     layout::{self, Layout},
+    pose::{self, Expression},
     shape::{self, rounded_number},
     traits::TraitOverrides,
 };
@@ -27,6 +28,7 @@ pub struct Options {
     pub normalize: bool,
     pub contrast: bool,
     pub title: Option<String>,
+    pub expression: Option<Expression>,
 }
 
 impl Default for Options {
@@ -41,6 +43,7 @@ impl Default for Options {
             normalize: true,
             contrast: true,
             title: None,
+            expression: None,
         }
     }
 }
@@ -49,6 +52,7 @@ impl Default for Options {
 pub struct Avatar {
     pub layout: Layout,
     pub palette: Palette,
+    pub body_offset_y: f64,
 }
 
 impl Avatar {
@@ -71,7 +75,13 @@ impl Avatar {
             }
         }
 
-        Self { layout, palette }
+        let expression = options.expression.unwrap_or_default();
+        let pose = expression.pose();
+        Self {
+            layout: pose::bake(&layout, pose),
+            palette: expression.palette(&palette),
+            body_offset_y: pose.body_offset_y,
+        }
     }
 
     pub fn svg(&self, options: &Options) -> String {
@@ -99,6 +109,12 @@ impl Avatar {
 
         let head = self.palette.head.as_deref().unwrap_or_default();
         let eye = self.palette.eye.as_deref().unwrap_or_default();
+        if self.body_offset_y != 0.0 {
+            svg.push_str(&format!(
+                "<g transform=\"translate(0 {})\">",
+                self.body_offset_y
+            ));
+        }
         svg.push_str("<g fill=\"");
         push_escaped_attribute_value(&mut svg, head);
         svg.push_str("\">");
@@ -126,7 +142,11 @@ impl Avatar {
             svg.push_str(&path.to_svg());
             svg.push_str("\"/>");
         }
-        svg.push_str("</g></svg>");
+        svg.push_str("</g>");
+        if self.body_offset_y != 0.0 {
+            svg.push_str("</g>");
+        }
+        svg.push_str("</svg>");
         svg
     }
 

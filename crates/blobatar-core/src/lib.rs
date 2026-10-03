@@ -8,4 +8,5 @@ pub mod traits;
 
 pub use avatar::{Avatar, Background, Options};
 pub use layout::Layout;
+pub use pose::{Expression, Pose};
 pub use shape::{Command, Path};
