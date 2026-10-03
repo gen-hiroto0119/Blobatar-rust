@@ -90,7 +90,7 @@ mod mac {
         fn drop(&mut self) {
             // The token is retained from this center's addObserver call.
             unsafe {
-                self.center.removeObserver(&self.token);
+                self.center.removeObserver((*self.token).as_ref());
             }
         }
     }

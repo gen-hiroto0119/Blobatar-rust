@@ -268,7 +268,7 @@ impl Demo {
         div()
             .relative()
             .w_24()
-            .h_12()
+            .h_16()
             .rounded_md()
             .bg(rgb(0x665021))
             .text_sm()
