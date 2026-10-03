@@ -146,3 +146,47 @@ fn transformed_neutral_paths_match_upstream_composition() {
         );
     }
 }
+
+#[test]
+fn face_fit_matches_upstream_for_browser_measurements() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/survey-2.7.0.json")).unwrap();
+    assert_eq!(fixture["meta"]["caseCount"], 120);
+    for (index, case) in fixture["cases"].as_array().unwrap().iter().enumerate() {
+        let head = serde_json::from_value(case["head"].clone()).unwrap();
+        let eyes: Vec<blobatar_core::geometry::Bounds> =
+            serde_json::from_value(case["eyes"].clone()).unwrap();
+        let mut samples = case["samples"].as_array().unwrap().iter();
+        let face = blobatar_motion::survey::fit_face(head, &eyes, |x, y| {
+            let sample = samples
+                .next()
+                .unwrap_or_else(|| panic!("extra fill query in case {index}"));
+            close(&json!(x), &sample["x"]);
+            close(&json!(y), &sample["y"]);
+            sample["hit"].as_bool().unwrap()
+        })
+        .unwrap();
+        assert!(
+            samples.next().is_none(),
+            "missing fill queries in case {index}"
+        );
+        close(&json!(face), &case["face"]);
+    }
+}
+
+#[test]
+fn native_surveys_keep_both_eyes_inside_the_fitted_face() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/survey-2.7.0.json")).unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let options = serde_json::from_value(case["options"].clone()).unwrap();
+        let avatar = blobatar_core::Avatar::new(case["seed"].as_str().unwrap(), &options);
+        let face = blobatar_motion::survey::survey(&avatar.layout).unwrap();
+        assert_eq!(face.marks.len(), 2);
+        assert!(face.rx.is_finite() && face.rx >= 1.0);
+        assert!(face.ry.is_finite() && face.ry >= 1.0);
+        assert!(
+            face.marks
+                .iter()
+                .all(|mark| mark.x.hypot(mark.y) <= 0.85 + 1e-12)
+        );
+    }
+}

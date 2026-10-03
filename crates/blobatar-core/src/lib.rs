@@ -1,5 +1,6 @@
 pub mod avatar;
 pub mod color;
+pub mod geometry;
 pub mod hash;
 pub mod layout;
 pub mod pose;

@@ -49,6 +49,9 @@ bun tools/generate-expression-reference.ts .reference --write
 bun tools/generate-expression-reference.ts .reference
 bun tools/generate-transform-reference.ts .reference --write
 bun tools/generate-transform-reference.ts .reference
+# Requires an existing Chrome debugging endpoint. Used only for test generation.
+CDP_URL=http://localhost:29229 bun tools/generate-survey-reference.ts .reference --write
+CDP_URL=http://localhost:29229 bun tools/generate-survey-reference.ts .reference
 # Freeze matching reference pages and their SVG inputs into a local output folder.
 bun tools/generate-render-matrix.ts .reference ./render-matrix-reference
 ```
@@ -63,7 +66,7 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 | --- | --- | --- |
 | A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; integrated into native demo |
 | C | GPUI vector component and macOS static image comparison | Ten shapes and fourteen static expressions verified on macOS; full size/surface matrix pending |
-| D | 14 expressions, morph, idle motion, gaze projection | Native morph/idle controller added; interactive visual verification and gaze input pending |
+| D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; hover-specific checks and gaze integration pending |
 | E | Editor, exports/settings, reusable showcase components | Not implemented |
 | F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
@@ -89,3 +92,12 @@ The transform corpus contains 6,048 fixed-time cases: three Unicode seeds, three
 shapes, fourteen expressions, sixteen times (including blink boundaries), and
 three amplitudes. It compares native affine composition with the pinned
 upstream SVG transform lists, including seeded eye lean and scale order.
+
+The face fitter has 120 cases replaying bounds and fill-query results recorded
+from the pinned upstream in Chrome. Its outputs and query coordinates use the
+same strict floating-point tolerance as the other math tests. This verifies
+the sixteen-ray fit and eye insets **given identical renderer measurements**;
+it does not establish native silhouette-measurement parity. The new native
+`f64` outline/survey implementation still differs from browser `getBBox` and
+`isPointInFill` at rounding boundaries. That comparison and GPUI gaze-target
+integration remain open; the acceptance tolerance has not been relaxed.
