@@ -49,6 +49,9 @@ bun tools/generate-expression-reference.ts .reference --write
 bun tools/generate-expression-reference.ts .reference
 bun tools/generate-transform-reference.ts .reference --write
 bun tools/generate-transform-reference.ts .reference
+# Deterministic DOM/clock harness; no browser or production JS dependency.
+bun tools/generate-driver-reference.ts .reference --write
+bun tools/generate-driver-reference.ts .reference
 # Requires an existing Chrome debugging endpoint. Used only for test generation.
 CDP_URL=http://localhost:29229 bun tools/generate-survey-reference.ts .reference --write
 CDP_URL=http://localhost:29229 bun tools/generate-survey-reference.ts .reference
@@ -65,7 +68,7 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 | Stage | Scope | Status |
 | --- | --- | --- |
 | A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; integrated into native demo |
-| C | GPUI vector component and macOS static image comparison | Ten shapes and fourteen static expressions verified on macOS; full size/surface matrix pending |
+| C | GPUI vector component and macOS static image comparison | Ten shapes, fourteen static expressions and the 400-avatar size/background/surface matrix compared on macOS; see [comparison notes](docs/render-matrix.md) |
 | D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; hover-specific checks and gaze integration pending |
 | E | Editor, exports/settings, reusable showcase components | Not implemented |
 | F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
@@ -101,3 +104,13 @@ it does not establish native silhouette-measurement parity. The new native
 `f64` outline/survey implementation still differs from browser `getBBox` and
 `isPointInFill` at rounding boundaries. That comparison and GPUI gaze-target
 integration remain open; the acceptance tolerance has not been relaxed.
+
+`GazeDriver` adds a platform-independent event/clock controller: Pointer, Point,
+Element bounds, Rest and None, pursuit parking, layout remeasurement, geometry
+replacement, enable/disable and permanent stop. The host owns element identity,
+event subscriptions and fresh window bounds; the GPUI adapter is still pending.
+The driver fixture has 12 sequences / 3,384 snapshots from the actual pinned
+driver with a deterministic DOM/clock harness and frozen survey measurements.
+It checks internal f64 state, rounded output channels and requested-frame state.
+The pinned implementation's pointer-leave sentinel aims far upper-left despite
+its comment saying centre; this behavior is preserved rather than silently fixed.
