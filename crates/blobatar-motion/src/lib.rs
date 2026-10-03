@@ -1,3 +1,4 @@
+pub mod clock;
 pub mod driver;
 pub mod ease;
 pub mod gaze;

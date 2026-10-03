@@ -1,9 +1,13 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use blobatar_core::{
     Avatar, Expression, Options, color::Palette, geometry::Bounds as FaceBounds, traits::Traits,
 };
 use blobatar_motion::{
+    clock::{PlaybackClock, PlaybackRate},
     driver::{GazeDriver, Target},
     ease,
     gaze::Mark,
@@ -39,6 +43,7 @@ pub struct AnimatedBlobatar {
     morph: Morph,
     expression: Expression,
     epoch: Instant,
+    clock: PlaybackClock,
     size: f32,
     mode: Animate,
     reduced_motion: bool,
@@ -89,6 +94,7 @@ impl AnimatedBlobatar {
             morph,
             expression,
             epoch: Instant::now(),
+            clock: PlaybackClock::default(),
             size: options.size.unwrap_or(64.0) as f32,
             mode: Animate::Hover,
             reduced_motion: false,
@@ -185,8 +191,46 @@ impl AnimatedBlobatar {
         cx.notify();
     }
 
+    pub fn set_paused(&mut self, paused: bool, cx: &mut Context<Self>) {
+        let wall = self.epoch.elapsed();
+        let now = self.clock.at(wall);
+        if paused
+            && !self.clock.is_paused()
+            && !self.motion_disabled()
+            && let Some(gaze) = &mut self.gaze
+        {
+            gaze.tick(now);
+        }
+        self.clock.set_paused(paused, wall);
+        cx.notify();
+    }
+
+    pub fn set_playback_rate(&mut self, rate: PlaybackRate, cx: &mut Context<Self>) {
+        self.clock.set_rate(rate, self.epoch.elapsed());
+        cx.notify();
+    }
+
+    /// Pauses at an idle time with expression/hover settled and gaze reset.
+    /// Pursuit history is not rewindable; replay input events to inspect it.
+    pub fn seek_idle(&mut self, time: Duration, cx: &mut Context<Self>) {
+        let wall = self.epoch.elapsed();
+        self.clock.seek(time, wall);
+        self.clock.set_paused(true, wall);
+        self.morph.finish();
+        self.amplitude_from = self.amplitude_to;
+        self.amplitude_start_ms = self.clock.at(wall);
+        self.lift_from = if self.hovered { 1.0 } else { 0.0 };
+        self.lift_start_ms = self.clock.at(wall) - self.lift_duration();
+        if let Some(gaze) = &mut self.gaze {
+            let enabled = gaze.is_enabled();
+            gaze.set_enabled(false);
+            gaze.set_enabled(enabled);
+        }
+        cx.notify();
+    }
+
     fn now(&self) -> f64 {
-        self.epoch.elapsed().as_secs_f64() * 1000.0
+        self.clock.at(self.epoch.elapsed())
     }
 
     fn motion_disabled(&self) -> bool {
@@ -196,6 +240,7 @@ impl AnimatedBlobatar {
     fn needs_frame(&self, now: f64, pose: blobatar_core::Pose, amplitude: f64) -> bool {
         self.visible
             && !self.motion_disabled()
+            && !self.clock.is_paused()
             && (amplitude > 0.0
                 || self.amplitude_to > 0.0
                 || pose.shake != 0.0
@@ -257,7 +302,7 @@ impl AnimatedBlobatar {
                 gaze.remeasure(viewport, self.gaze_travel, None);
             }
             gaze.set_enabled(!still);
-            if self.visible {
+            if self.visible && !self.clock.is_paused() {
                 gaze.tick(now);
             }
         }
@@ -412,6 +457,9 @@ mod tests {
         view.amplitude_to = 1.0;
         let pose = Expression::Thinking.pose();
         assert!(view.needs_frame(1000.0, pose, 1.0));
+        view.clock.set_paused(true, Duration::ZERO);
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.clock.set_paused(false, Duration::ZERO);
         view.visible = false;
         assert!(!view.needs_frame(1000.0, pose, 1.0));
         view.visible = true;

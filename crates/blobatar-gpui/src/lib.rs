@@ -12,6 +12,7 @@ mod animated;
 mod system_motion;
 pub use animated::{Animate, AnimatedBlobatar};
 pub use blobatar_core::geometry::Bounds as GazeBounds;
+pub use blobatar_motion::clock::PlaybackRate;
 pub use blobatar_motion::{driver::Target as GazeTarget, gaze::Mark as GazePoint};
 
 /// Share a drawing between rerenders so name-derived geometry is not regenerated.

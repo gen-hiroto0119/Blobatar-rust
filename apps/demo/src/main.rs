@@ -1,12 +1,12 @@
 use blobatar_core::{Avatar, Background, Expression, Options, traits::Override};
 use blobatar_gpui::{
-    Animate, AnimatedBlobatar, Blobatar, Drawing, GazeBounds, GazePoint, GazeTarget,
+    Animate, AnimatedBlobatar, Blobatar, Drawing, GazeBounds, GazePoint, GazeTarget, PlaybackRate,
     gpui::{
         self, App, Application, Bounds, Context, Entity, Render, Window, WindowBounds,
         WindowOptions, canvas, div, prelude::*, px, rgb, size,
     },
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 mod matrix;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -29,6 +29,8 @@ struct Demo {
     gaze_mode: GazeMode,
     target_bounds: GazeBounds,
     show_target: bool,
+    paused: bool,
+    playback_rate: PlaybackRate,
 }
 
 impl Demo {
@@ -86,6 +88,8 @@ impl Demo {
                 height: 0.0,
             },
             show_target: true,
+            paused: false,
+            playback_rate: PlaybackRate::Normal,
         }
     }
 
@@ -174,6 +178,88 @@ impl Demo {
                         }
                         cx.notify();
                     })),
+            )
+    }
+
+    fn playback_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_wrap()
+            .gap_2()
+            .child(
+                div()
+                    .id("pause")
+                    .px_3()
+                    .py_2()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .bg(rgb(0x1b1e26))
+                    .text_sm()
+                    .child(if self.paused {
+                        "再生 / Play"
+                    } else {
+                        "一時停止 / Pause"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.paused = !this.paused;
+                        this.preview
+                            .update(cx, |preview, cx| preview.set_paused(this.paused, cx));
+                        cx.notify();
+                    })),
+            )
+            .children(
+                [
+                    (PlaybackRate::Quarter, "0.25×"),
+                    (PlaybackRate::Half, "0.5×"),
+                    (PlaybackRate::Normal, "1×"),
+                    (PlaybackRate::Double, "2×"),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (rate, label))| {
+                    div()
+                        .id(("playback-rate", i))
+                        .px_3()
+                        .py_2()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .text_sm()
+                        .bg(rgb(if self.playback_rate == rate {
+                            0x354a70
+                        } else {
+                            0x1b1e26
+                        }))
+                        .child(label)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.playback_rate = rate;
+                            this.preview
+                                .update(cx, |preview, cx| preview.set_playback_rate(rate, cx));
+                            cx.notify();
+                        }))
+                }),
+            )
+            .children(
+                [0_u64, 1234, 3000]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, time)| {
+                        div()
+                            .id(("idle-time", i))
+                            .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .cursor_pointer()
+                            .bg(rgb(0x1b1e26))
+                            .text_sm()
+                            .child(format!("Idle t={time}ms"))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.paused = true;
+                                this.preview.update(cx, |preview, cx| {
+                                    preview.seek_idle(Duration::from_millis(time), cx)
+                                });
+                                cx.notify();
+                            }))
+                    }),
             )
     }
 
@@ -340,6 +426,7 @@ impl Render for Demo {
                                 ),
                             )
                             .child(self.gaze_controls(cx))
+                            .child(self.playback_controls(cx))
                             .child(
                                 div()
                                     .id("reduced-motion")

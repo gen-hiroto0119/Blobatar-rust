@@ -139,3 +139,11 @@ element bounds; a reusable automatic element-observation wrapper is not supplied
 discards the controller and disables its listeners; a later `look_at` installs a
 fresh controller. Off and reduced motion disable gaze alongside other motion.
 Native adapter interaction validation is still pending.
+
+The native preview exposes pause/play and 0.25×/0.5×/1×/2× playback. The pure
+`PlaybackClock` uses absolute wall-time anchors; changing rate or pausing does
+not jump the virtual timeline. `seek_idle(Duration, cx)` accepts arbitrary
+times, pauses, settles the selected expression/hover, and resets pursuit. The
+demo has 0/1234/3000ms presets. Seeking is **not** a rewind of morph or gaze
+event history; deterministic pursuit inspection requires replaying its input
+sequence. OS/explicit reduced motion still takes precedence over playback.
