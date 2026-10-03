@@ -174,6 +174,47 @@ fn face_fit_matches_upstream_for_browser_measurements() {
 }
 
 #[test]
+fn gaze_composes_with_pose_hover_and_idle() {
+    use blobatar_motion::transform::{Affine, frame_transforms_with_gaze};
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/gaze-transforms-2.7.0.json")).unwrap();
+    assert_eq!(fixture["meta"]["caseCount"], 672);
+    for case in fixture["cases"].as_array().unwrap() {
+        let seed = case["seed"].as_str().unwrap();
+        let options: blobatar_core::Options =
+            serde_json::from_value(case["options"].clone()).unwrap();
+        let expression: Expression = serde_json::from_value(case["expression"].clone()).unwrap();
+        let avatar = blobatar_core::Avatar::new(seed, &options);
+        let traits = Traits::new(seed, options.normalize, &options.traits);
+        let pose = expression.pose();
+        let seeds = IdleSeeds::new(&traits).with_gaze_hold(number(&case["gaze"], "hold"));
+        let idle = idle_at(
+            seeds,
+            number(case, "time"),
+            number(case, "amplitude"),
+            pose.shake,
+        );
+        close(&json!(idle), &case["idle"]);
+        let lift = number(case, "hover");
+        let hover = Affine::translate(50.0, 50.0 - 1.5 * lift)
+            .compose(Affine::scale(1.0 + 0.04 * lift, 1.0 + 0.04 * lift))
+            .compose(Affine::translate(-50.0, -50.0));
+        let gaze: Vec<gaze::Projection> =
+            serde_json::from_value(case["gaze"]["eyes"].clone()).unwrap();
+        close(
+            &json!(frame_transforms_with_gaze(
+                &avatar.layout,
+                pose,
+                idle,
+                hover,
+                &gaze
+            )),
+            &case["transforms"],
+        );
+    }
+}
+
+#[test]
 fn native_surveys_keep_both_eyes_inside_the_fitted_face() {
     let fixture: Value = serde_json::from_str(include_str!("fixtures/survey-2.7.0.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {

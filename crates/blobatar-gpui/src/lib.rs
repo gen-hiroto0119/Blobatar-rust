@@ -10,6 +10,8 @@ use gpui::{
 pub use gpui;
 mod animated;
 pub use animated::{Animate, AnimatedBlobatar};
+pub use blobatar_core::geometry::Bounds as GazeBounds;
+pub use blobatar_motion::{driver::Target as GazeTarget, gaze::Mark as GazePoint};
 
 /// Share a drawing between rerenders so name-derived geometry is not regenerated.
 pub struct Drawing {
@@ -67,7 +69,12 @@ pub struct Blobatar {
     drawing: Arc<Drawing>,
     size: Pixels,
     frame: Option<PaintFrame>,
+    prepare: Option<PrepareFrame>,
+    listen: Option<InstallListeners>,
 }
+
+type PrepareFrame = Box<dyn FnOnce(Bounds<Pixels>, &mut Window, &mut App) -> Option<PaintFrame>>;
+type InstallListeners = Box<dyn FnOnce(&mut Window, &mut App)>;
 
 struct PaintFrame {
     transforms: FrameTransforms,
@@ -90,6 +97,8 @@ impl Blobatar {
             drawing,
             size: px(64.0),
             frame: None,
+            prepare: None,
+            listen: None,
         }
     }
 
@@ -103,9 +112,17 @@ impl RenderOnce for Blobatar {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let drawing = self.drawing;
         let frame = self.frame;
+        let prepare = self.prepare;
+        let listen = self.listen;
         canvas(
-            |_, _, _| (),
-            move |bounds, _, window, _| {
+            move |bounds, window, cx| match prepare {
+                Some(prepare) => prepare(bounds, window, cx),
+                None => frame,
+            },
+            move |bounds, frame, window, cx| {
+                if let Some(listen) = listen {
+                    listen(window, cx);
+                }
                 let scale = f64::from(f32::from(bounds.size.width)) / 100.0;
                 if let Some((path, color)) = &drawing.backdrop {
                     paint_path(window, bounds, scale, path, *color, Affine::IDENTITY);

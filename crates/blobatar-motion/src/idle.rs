@@ -22,6 +22,16 @@ pub struct IdleSeeds {
 }
 
 impl IdleSeeds {
+    /// Gaze suppresses the glance seeds, not the blink/breathe/bob clocks.
+    pub fn with_gaze_hold(mut self, hold: f64) -> Self {
+        let remaining = 1.0 - hold;
+        self.look_x *= remaining;
+        self.look_y *= remaining;
+        self.look_magnitude_x *= remaining;
+        self.look_magnitude_y *= remaining;
+        self
+    }
+
     pub fn new(traits: &Traits<'_>) -> Self {
         // These ranges are positive, so Rust round agrees with Math.round here.
         let blink = traits.num("motion.blink", 3500.0, 6500.0).round();

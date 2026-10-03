@@ -170,6 +170,10 @@ impl GazeDriver {
         self.scheduled
     }
 
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     pub fn frame(&self) -> &GazeFrame {
         &self.frame
     }

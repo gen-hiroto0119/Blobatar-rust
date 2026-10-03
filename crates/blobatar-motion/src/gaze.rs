@@ -39,6 +39,16 @@ pub struct Projection {
     pub tilt: f64,
 }
 
+impl Projection {
+    pub const IDENTITY: Self = Self {
+        dx: 0.0,
+        dy: 0.0,
+        sx: 1.0,
+        sy: 1.0,
+        tilt: 0.0,
+    };
+}
+
 struct Patch {
     scale_x: f64,
     scale_y: f64,

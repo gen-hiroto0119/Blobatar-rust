@@ -52,6 +52,8 @@ bun tools/generate-transform-reference.ts .reference
 # Deterministic DOM/clock harness; no browser or production JS dependency.
 bun tools/generate-driver-reference.ts .reference --write
 bun tools/generate-driver-reference.ts .reference
+bun tools/generate-gaze-transform-reference.ts .reference --write
+bun tools/generate-gaze-transform-reference.ts .reference
 # Requires an existing Chrome debugging endpoint. Used only for test generation.
 CDP_URL=http://localhost:29229 bun tools/generate-survey-reference.ts .reference --write
 CDP_URL=http://localhost:29229 bun tools/generate-survey-reference.ts .reference
@@ -69,7 +71,7 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 | --- | --- | --- |
 | A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; integrated into native demo |
 | C | GPUI vector component and macOS static image comparison | Ten shapes, fourteen static expressions and the 400-avatar size/background/surface matrix compared on macOS; see [comparison notes](docs/render-matrix.md) |
-| D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; hover-specific checks and gaze integration pending |
+| D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; gaze adapter wired, native gaze/hover verification pending |
 | E | Editor, exports/settings, reusable showcase components | Not implemented |
 | F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
@@ -88,7 +90,7 @@ unchanged. URI encoding otherwise preserves upstream's raw-Unicode behavior.
 of regenerating traits on each frame. The demo exposes all fourteen expression
 targets, off/hover/always modes, and an explicit reduced-motion toggle. Static and
 reduced-motion modes use the baked drawing and do not schedule continuous frames.
-OS reduced-motion detection, gaze input, offscreen scheduling, keyboard navigation,
+OS reduced-motion detection, offscreen scheduling, keyboard navigation,
 and performance measurements remain incomplete.
 
 The transform corpus contains 6,048 fixed-time cases: three Unicode seeds, three
@@ -102,15 +104,33 @@ same strict floating-point tolerance as the other math tests. This verifies
 the sixteen-ray fit and eye insets **given identical renderer measurements**;
 it does not establish native silhouette-measurement parity. The new native
 `f64` outline/survey implementation still differs from browser `getBBox` and
-`isPointInFill` at rounding boundaries. That comparison and GPUI gaze-target
-integration remain open; the acceptance tolerance has not been relaxed.
+`isPointInFill` at rounding boundaries. That comparison remains open; the
+acceptance tolerance has not been relaxed.
 
 `GazeDriver` adds a platform-independent event/clock controller: Pointer, Point,
 Element bounds, Rest and None, pursuit parking, layout remeasurement, geometry
 replacement, enable/disable and permanent stop. The host owns element identity,
-event subscriptions and fresh window bounds; the GPUI adapter is still pending.
+event subscriptions and fresh window bounds.
 The driver fixture has 12 sequences / 3,384 snapshots from the actual pinned
 driver with a deterministic DOM/clock harness and frozen survey measurements.
 It checks internal f64 state, rounded output channels and requested-frame state.
 The pinned implementation's pointer-leave sentinel aims far upper-left despite
 its comment saying centre; this behavior is preserved rather than silently fixed.
+
+The GPUI adapter installs weak window-level pointer listeners during paint,
+remeasures its own bounds during prepaint (including scroll/resize), and composes
+the cached per-eye projections with pose, hover, glance and blink. Its 672-case
+composition fixture folds `gaze.css` arithmetic into the pinned, quantized SVG
+transform lists; it is not a browser computed-style or pixel-parity claim.
+Gaze holds suppress glance seeds only; breathe, bob and blink continue.
+
+Use `AnimatedBlobatar::new(name, &options).gaze_travel(2.5)` to opt into travel
+(100-unit viewBox, zero by default), then call `look_at(GazeTarget::Pointer, cx)`.
+Point and Element bounds are window-local logical pixels. Element identity is
+host-owned: supply updated bounds through `remeasure_gaze_target`, including zero
+bounds for a detached target. The demo demonstrates moving/hidden/reappearing
+element bounds; a reusable automatic element-observation wrapper is not supplied.
+`None` eases home and releases idle glance; `Rest` holds it off. `stop_gaze`
+discards the controller and disables its listeners; a later `look_at` installs a
+fresh controller. Off and reduced motion disable gaze alongside other motion.
+Native adapter interaction validation is still pending.

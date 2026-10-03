@@ -1,13 +1,23 @@
 use blobatar_core::{Avatar, Background, Expression, Options, traits::Override};
 use blobatar_gpui::{
-    Animate, AnimatedBlobatar, Blobatar, Drawing,
+    Animate, AnimatedBlobatar, Blobatar, Drawing, GazeBounds, GazePoint, GazeTarget,
     gpui::{
         self, App, Application, Bounds, Context, Entity, Render, Window, WindowBounds,
-        WindowOptions, div, prelude::*, px, rgb, size,
+        WindowOptions, canvas, div, prelude::*, px, rgb, size,
     },
 };
 use std::sync::Arc;
 mod matrix;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GazeMode {
+    None,
+    Pointer,
+    Point,
+    Element,
+    Rest,
+    Stop,
+}
 
 struct Demo {
     drawings: Vec<Arc<Drawing>>,
@@ -16,6 +26,9 @@ struct Demo {
     selected: Expression,
     mode: Animate,
     reduced_motion: bool,
+    gaze_mode: GazeMode,
+    target_bounds: GazeBounds,
+    show_target: bool,
 }
 
 impl Demo {
@@ -56,6 +69,7 @@ impl Demo {
                 },
             )
             .size(140.0)
+            .gaze_travel(2.5)
         });
         Self {
             drawings,
@@ -64,7 +78,143 @@ impl Demo {
             selected: Expression::Idle,
             mode: Animate::Hover,
             reduced_motion: false,
+            gaze_mode: GazeMode::None,
+            target_bounds: GazeBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            show_target: true,
         }
+    }
+
+    fn gaze_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_wrap()
+            .gap_2()
+            .children(
+                [
+                    (GazeMode::None, "解除 / None"),
+                    (GazeMode::Pointer, "ポインタ / Pointer"),
+                    (GazeMode::Point, "クリック位置 / Point"),
+                    (GazeMode::Element, "対象部品 / Element"),
+                    (GazeMode::Rest, "中央 / Rest"),
+                    (GazeMode::Stop, "視線終了 / Stop"),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(index, (mode, label))| {
+                    div()
+                        .id(("gaze", index))
+                        .px_3()
+                        .py_2()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .bg(rgb(if self.gaze_mode == mode {
+                            0x354a70
+                        } else {
+                            0x1b1e26
+                        }))
+                        .text_sm()
+                        .child(label)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.gaze_mode = mode;
+                            let mouse = window.mouse_position();
+                            let target = match mode {
+                                GazeMode::None | GazeMode::Stop => GazeTarget::None,
+                                GazeMode::Pointer => GazeTarget::Pointer,
+                                GazeMode::Point => GazeTarget::Point(GazePoint {
+                                    x: f64::from(f32::from(mouse.x)),
+                                    y: f64::from(f32::from(mouse.y)),
+                                }),
+                                GazeMode::Element => GazeTarget::Element(this.target_bounds),
+                                GazeMode::Rest => GazeTarget::Rest,
+                            };
+                            this.preview.update(cx, |preview, cx| {
+                                if mode == GazeMode::Stop {
+                                    preview.stop_gaze(cx);
+                                } else {
+                                    preview.look_at(target, cx);
+                                }
+                            });
+                            cx.notify();
+                        }))
+                }),
+            )
+            .child(
+                div()
+                    .id("hide-target")
+                    .px_3()
+                    .py_2()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .bg(rgb(0x1b1e26))
+                    .text_sm()
+                    .child(if self.show_target {
+                        "対象を隠す / Hide target"
+                    } else {
+                        "対象を表示 / Show target"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_target = !this.show_target;
+                        if !this.show_target {
+                            this.target_bounds = GazeBounds {
+                                x: 0.0,
+                                y: 0.0,
+                                width: 0.0,
+                                height: 0.0,
+                            };
+                            if this.gaze_mode == GazeMode::Element {
+                                this.preview.update(cx, |preview, cx| {
+                                    preview.remeasure_gaze_target(this.target_bounds, cx)
+                                });
+                            }
+                        }
+                        cx.notify();
+                    })),
+            )
+    }
+
+    fn gaze_marker(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let entity = cx.entity().downgrade();
+        div()
+            .relative()
+            .w_24()
+            .h_12()
+            .rounded_md()
+            .bg(rgb(0x665021))
+            .text_sm()
+            .p_2()
+            .child("視線の対象 / Target")
+            .child(
+                canvas(
+                    move |bounds, _, cx| {
+                        let measured = GazeBounds {
+                            x: f64::from(f32::from(bounds.origin.x)),
+                            y: f64::from(f32::from(bounds.origin.y)),
+                            width: f64::from(f32::from(bounds.size.width)),
+                            height: f64::from(f32::from(bounds.size.height)),
+                        };
+                        let _ = entity.update(cx, |this, cx| {
+                            if measured != this.target_bounds {
+                                this.target_bounds = measured;
+                                if this.gaze_mode == GazeMode::Element {
+                                    this.preview.update(cx, |preview, cx| {
+                                        preview.remeasure_gaze_target(measured, cx)
+                                    });
+                                }
+                            }
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full(),
+            )
     }
 }
 
@@ -122,6 +272,7 @@ impl Render for Demo {
                     .flex()
                     .gap_6()
                     .items_center()
+                    .when(self.show_target, |row| row.child(self.gaze_marker(cx)))
                     .child(self.preview.clone())
                     .child(
                         div()
@@ -188,6 +339,7 @@ impl Render for Demo {
                                     ),
                                 ),
                             )
+                            .child(self.gaze_controls(cx))
                             .child(
                                 div()
                                     .id("reduced-motion")
@@ -219,7 +371,7 @@ impl Render for Demo {
             .child(
                 div()
                     .text_sm()
-                    .child("ネイティブ動作の確認用。視線入力・エディター・保存/APIは未実装です。"),
+                    .child("視線: Noneはidleへ、Restは中央、Stopは即時解除。顔測定の完全互換・エディター・保存/APIは未完了です。"),
             )
     }
 }

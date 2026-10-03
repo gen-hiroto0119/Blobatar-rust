@@ -1,7 +1,7 @@
 use blobatar_core::{Layout, Pose};
 use serde::{Deserialize, Serialize};
 
-use crate::idle::IdleFrame;
+use crate::{gaze::Projection, idle::IdleFrame};
 
 /// SVG affine order: [a, b, c, d, translation_x, translation_y].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -68,6 +68,17 @@ pub fn frame_transforms_with_hover(
     idle: IdleFrame,
     hover: Affine,
 ) -> FrameTransforms {
+    frame_transforms_with_gaze(layout, pose, idle, hover, &[])
+}
+
+/// Fold gaze into the pose's unscaled offset, tilt and local eye scales.
+pub fn frame_transforms_with_gaze(
+    layout: &Layout,
+    pose: Pose,
+    idle: IdleFrame,
+    hover: Affine,
+    gaze: &[Projection],
+) -> FrameTransforms {
     let body = Affine::translate(round3(idle.shake[0]), round3(idle.shake[1]))
         .compose(hover)
         .compose(Affine::translate(50.0, 50.0))
@@ -89,20 +100,23 @@ pub fn frame_transforms_with_hover(
         .iter()
         .enumerate()
         .map(|(index, eye)| {
+            let gaze = gaze.get(index).copied().unwrap_or(Projection::IDENTITY);
             let select = if index == 0 { 0.0 } else { 1.0 };
             let side = if index == 0 { -1.0 } else { 1.0 };
             let phase = select * (1.0 - pose.rock) + pose.rock * ((1.0 + side * idle.rockp) / 2.0);
             let posed = Affine::translate(
-                round3(eye.cx + pose.eye_offset_x * side),
-                round3(eye.cy + pose.eye_offset_y + phase * pose.right_offset_y_delta),
+                round3(eye.cx + pose.eye_offset_x * side) + gaze.dx,
+                round3(eye.cy + pose.eye_offset_y + phase * pose.right_offset_y_delta) + gaze.dy,
             )
-            .compose(Affine::rotate(round3(
-                (pose.eye_tilt + select * pose.right_tilt_delta) * side
-                    + eye.rot * (1.0 - pose.lean_lock),
-            )))
+            .compose(Affine::rotate(
+                round3(
+                    (pose.eye_tilt + select * pose.right_tilt_delta) * side
+                        + eye.rot * (1.0 - pose.lean_lock),
+                ) + gaze.tilt,
+            ))
             .compose(Affine::scale(
-                round3(pose.eye_scale_x + select * pose.right_scale_x_delta),
-                round3(pose.eye_scale_y + select * pose.right_scale_y_delta),
+                round3(pose.eye_scale_x + select * pose.right_scale_x_delta) * gaze.sx,
+                round3(pose.eye_scale_y + select * pose.right_scale_y_delta) * gaze.sy,
             ))
             .compose(Affine::rotate(round3(-eye.rot)))
             .compose(Affine::translate(round3(-eye.cx), round3(-eye.cy)));
