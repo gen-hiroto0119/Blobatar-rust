@@ -1,0 +1,14 @@
+{
+  "bad_request": "Check the request against the parameter list at https://blobatar.dev/docs.",
+  "unknown_parameter": "Remove the parameter or correct its spelling. The accepted names are listed in the message and in /openapi.json.",
+  "unknown_value": "Use one of the values named in the message. They are enumerated per parameter in /openapi.json.",
+  "invalid_number": "Send a plain decimal number, with no units and no whitespace.",
+  "out_of_range": "Bring the value inside the range named in the message before sending it.",
+  "title_too_long": "Shorten the title. It becomes the blobatar's accessible name, so it wants a name rather than a sentence.",
+  "name_empty": "Put a name after /avatar/, for example /avatar/alain.",
+  "name_has_slash": "Percent-encode the slash as %2F.",
+  "name_encoding": "Build the path with encodeURIComponent, which escapes the characters a bare % leaves malformed.",
+  "name_too_long": "Hash the identifier before using it as a name — a digest is a stable seed and always fits.",
+  "method_not_allowed": "Repeat the request as GET or HEAD.",
+  "not_found": "The only route is GET /avatar/<name>. See /openapi.json for its parameters."
+}

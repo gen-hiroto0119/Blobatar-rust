@@ -5,6 +5,9 @@ use crate::{
     traits::{TraitOverrides, Traits},
 };
 
+mod generation1;
+pub(crate) use generation1::make_layout as make_generation1_layout;
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Body {
     pub cx: f64,

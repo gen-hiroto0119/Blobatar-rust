@@ -55,9 +55,25 @@ pub struct Avatar {
     pub body_offset_y: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Generation {
+    One,
+    #[default]
+    Two,
+}
+
 impl Avatar {
     pub fn new(seed: &str, options: &Options) -> Self {
-        let layout = layout::make_layout(seed, options.normalize, &options.traits);
+        Self::with_generation(seed, options, Generation::Two)
+    }
+
+    pub fn with_generation(seed: &str, options: &Options, generation: Generation) -> Self {
+        let layout = match generation {
+            Generation::One => {
+                layout::make_generation1_layout(seed, options.normalize, &options.traits)
+            }
+            Generation::Two => layout::make_layout(seed, options.normalize, &options.traits),
+        };
         let traits = crate::traits::Traits::new(seed, options.normalize, &options.traits);
         let hue = options.hue.unwrap_or_else(|| traits.num("hue", 0.0, 360.0));
         let tone = options.tone.unwrap_or_else(|| traits.get("tone"));

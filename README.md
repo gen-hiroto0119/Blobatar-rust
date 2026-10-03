@@ -83,13 +83,51 @@ implementation: labels alone are **not** VoiceOver support. OS accessibility,
 native interaction acceptance and measured large-table performance remain open.
 Use sample strings, not real credentials, when testing the password demo.
 
+## Standalone avatar HTTP API
+
+Run the frozen avatar API locally:
+
+```sh
+cargo run -p blobatar-server
+# Optional bind override:
+BLOBATAR_BIND=127.0.0.1:3001 cargo run -p blobatar-server
+```
+
+The default listener is loopback-only at `127.0.0.1:3000`; the server is not a
+public hosted service and makes no upstream requests. Ctrl-C shuts it down.
+`GET` and `HEAD /` and `/avatar/` return help, `/openapi.json` serves the frozen
+schema with its `servers` URL set from the request origin, and unknown paths
+return 404. `/avatar/<name>` accepts only `GET` and `HEAD`; other methods return
+405 with `Allow: GET, HEAD`.
+
+Avatar names strip only literal `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif` and
+`.webp` suffixes before percent decoding. Literal slashes are rejected;
+percent-encoded slashes are allowed. Names and titles are limited by UTF-16
+code units (256 and 128 respectively). Query parameters use form decoding and
+the first value for each key wins; `s` takes precedence over `size`. Size uses
+finite ECMAScript number syntax, clamps to 8–1024 and rounds like JavaScript.
+Hue is 0–360, tone is 0–1, backgrounds are `none`, `square`, `circle` or
+`squircle`, and expressions are the fourteen names listed in `/openapi.json`.
+Unversioned avatars use generation 2; `gen=1` or `gen=2` pins a generation and
+uses immutable caching. Exact ETag matches return 304. Errors negotiate
+pretty-printed JSON when `Accept` contains `application/json` or `+json`;
+otherwise they return plain text.
+
+`Avatar::new` remains generation 2. The public
+`Avatar::with_generation(name, &options, Generation::One)` factory selects the
+separately frozen Generation 1 layout. Generation 1 settings in the editor and
+the native/SQLite wall remain pending; the HTTP API and Generation 1 core do
+not implement those features.
+
 ## Compatibility baseline
 
 - Generation 2: `blobatar 2.7.0`, commit
   [`a7fd546`](https://github.com/Alain00/blobatar/tree/a7fd546ebede49d0a9fa638945b9e534489782a2).
 - Complete historical Flutter vectors from 2.4.0 are retained, including
   expression data. They do not prove compatibility with all 2.7.0 behavior.
-- Generation 1 will use the separately frozen `blobatar@1.0.0` implementation.
+- Generation 1 uses the separately frozen `blobatar@1.0.0` implementation.
+  Its archive integrity is
+  `sha512-Xl122ZzoiW18Z5sLDHwcZXtHGCQwB1hN9LyUYEdjqBLJltk8h0Ap//1RWq612eABNLE957tii3aBP7hzeRXdsQ==`.
 - Provenance is recorded in [docs/upstream-lock.json](docs/upstream-lock.json).
 - Original upstream copyright and MIT terms are preserved in
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
@@ -127,6 +165,11 @@ bun tools/generate-expression-reference.ts .reference --write
 bun tools/generate-expression-reference.ts .reference
 bun tools/generate-transform-reference.ts .reference --write
 bun tools/generate-transform-reference.ts .reference
+# Generation 1 and HTTP API references also verify the archived v1 package.
+bun tools/generate-generation1-reference.ts .reference ../blobatar-v1-reference
+bun tools/generate-generation1-reference.ts .reference ../blobatar-v1-reference --write
+bun tools/generate-api-reference.ts .reference ../blobatar-v1-reference
+bun tools/generate-api-reference.ts .reference ../blobatar-v1-reference --write
 # Deterministic DOM/clock harness; no browser or production JS dependency.
 bun tools/generate-driver-reference.ts .reference --write
 bun tools/generate-driver-reference.ts .reference
@@ -142,6 +185,9 @@ bun tools/generate-render-matrix.ts .reference ./render-matrix-reference
 Review any fixture diff rather than accepting new output to hide a regression.
 Hash streams, shape names, palette hex and serialized paths are compared exactly.
 Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
+The HTTP fixture contains 230 exact request/response cases; its help, errors and
+OpenAPI assets are frozen from upstream commit `a7fd546`. The Generation 1
+fixture contains 1,543 cases and verifies the archive integrity above.
 
 ## Delivery stages
 
@@ -151,7 +197,7 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 | C | GPUI vector component and macOS static image comparison | Ten shapes, fourteen static expressions and the 400-avatar size/background/surface matrix compared on macOS; see [comparison notes](docs/render-matrix.md) |
 | D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; gaze adapter wired, native gaze/hover verification pending |
 | E | Editor, exports/settings, reusable showcase components | Generation 2 editor, exports/settings and six reusable native views implemented; native interaction acceptance pending |
-| F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
+| F | Generation 1 core and avatar HTTP API; SQLite wall/API/native wall | Generation 1 core and frozen avatar HTTP API verified; wall and Generation 1 settings pending |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
 
 Static SVG output is an intermediate milestone, not the desktop demo or final

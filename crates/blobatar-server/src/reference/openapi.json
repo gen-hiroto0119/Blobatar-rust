@@ -1,0 +1,369 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "blobatar",
+    "version": "2.7.0",
+    "summary": "Deterministic geometric avatars over HTTP.",
+    "description": "One route renders an SVG avatar from any string — a username, a display name, an email, an id, or a Gravatar digest. The same name always renders the same blobatar within a generation, so a URL is a stable identity for a person and needs no storage behind it.\n\nReach for it when an application needs an avatar for somebody who has not uploaded one, when it needs a deterministic placeholder that will not change between page loads, or as a drop-in for Gravatar: swap the host and keep the rest of the URL.\n\nNo authentication, no accounts, no rate limit to negotiate. Responses are cacheable and safe to hotlink from an `<img>` tag.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "contact": {
+      "name": "blobatar issues",
+      "url": "https://github.com/Alain00/blobatar/issues"
+    }
+  },
+  "externalDocs": {
+    "description": "Endpoint documentation",
+    "url": "https://blobatar.dev/docs"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3000"
+    }
+  ],
+  "security": [],
+  "paths": {
+    "/avatar/{name}": {
+      "get": {
+        "operationId": "getAvatar",
+        "summary": "Render an avatar for a name",
+        "description": "Returns an SVG document. Names are NFC-normalized, trimmed and lowercased before hashing, so /avatar/Alain and /avatar/alain render the same blobatar — prefer one spelling, since each is cached separately. Responses carry an ETag and may be revalidated with If-None-Match.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Anything that stands for somebody: a username, an email, an id, a Gravatar hash. 256 characters or fewer after percent-decoding. A name containing a slash must be percent-encoded as %2F.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "example": "alain@example.com"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "Pixel size of the rendered SVG, 8–1024. Clamped into range rather than rejected, because a blobatar at the wrong scale is fixable with CSS and a 400 is a broken image. Omit to let the consumer size it.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 1024
+            }
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "description": "Gravatar's spelling of `size`, accepted so that moving an integration here is a host edit. Wins if both are present.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 1024
+            }
+          },
+          {
+            "name": "background",
+            "in": "query",
+            "description": "Shape drawn behind the body. Omit or pass `none` for a transparent backdrop, which is the default — the body is the blobatar.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "none",
+                "square",
+                "circle",
+                "squircle"
+              ]
+            }
+          },
+          {
+            "name": "hue",
+            "in": "query",
+            "description": "Locks the colour in degrees, 0–360, so the name drives shape only. 360 is accepted alongside 0: hue is a circle and callers compute into it.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 360
+            }
+          },
+          {
+            "name": "tone",
+            "in": "query",
+            "description": "Locks the swatch as a 0–1 position in the tone set, pale to ink. The bands are half-open, so an exact 1 sits on the top edge and renders as 0 — pass 0.999 for ink.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          {
+            "name": "expression",
+            "in": "query",
+            "description": "A pose the blobatar holds. Decorative: it never adds a mark, so it does not reach assistive technology and does not change the accessible name.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "idle",
+                "happy",
+                "sad",
+                "mad",
+                "surprised",
+                "wink",
+                "sleepy",
+                "smug",
+                "unsure",
+                "scared",
+                "love",
+                "shy",
+                "sick",
+                "thinking"
+              ],
+              "default": "idle"
+            }
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Accessible name, 128 characters or fewer. Emitted as a <title> inside the SVG. Names who the blobatar stands for, not what it looks like.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "gen",
+            "in": "query",
+            "description": "Pins the shape vocabulary. A generation is one frozen name-to-blobatar mapping and is never retired, so a pinned URL cannot come back different — which is why pinned responses are cached for a year as immutable. Unpinned follows the current major.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ]
+            }
+          },
+          {
+            "name": "d",
+            "in": "query",
+            "description": "Accepted for drop-in Gravatar compatibility and ignored: every string renders, so there is no missing avatar to fall back to and nothing above a G rating to filter. Do not send it in new code.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "default",
+            "in": "query",
+            "description": "Accepted for drop-in Gravatar compatibility and ignored: every string renders, so there is no missing avatar to fall back to and nothing above a G rating to filter. Do not send it in new code.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "f",
+            "in": "query",
+            "description": "Accepted for drop-in Gravatar compatibility and ignored: every string renders, so there is no missing avatar to fall back to and nothing above a G rating to filter. Do not send it in new code.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "forcedefault",
+            "in": "query",
+            "description": "Accepted for drop-in Gravatar compatibility and ignored: every string renders, so there is no missing avatar to fall back to and nothing above a G rating to filter. Do not send it in new code.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "r",
+            "in": "query",
+            "description": "Accepted for drop-in Gravatar compatibility and ignored: every string renders, so there is no missing avatar to fall back to and nothing above a G rating to filter. Do not send it in new code.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rating",
+            "in": "query",
+            "description": "Accepted for drop-in Gravatar compatibility and ignored: every string renders, so there is no missing avatar to fall back to and nothing above a G rating to filter. Do not send it in new code.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rendered blobatar.",
+            "headers": {
+              "ETag": {
+                "description": "Hash of the body. Send it back as If-None-Match.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "A day with a month of stale-while-revalidate, or a year immutable when the request pinned a generation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "image/svg+xml"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The ETag matched; the body is unchanged."
+          },
+          "400": {
+            "description": "A parameter or the name was rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "The method was not GET or HEAD.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/avatar/": {
+      "get": {
+        "operationId": "getAvatarUsage",
+        "summary": "Human-readable usage for the avatar route",
+        "description": "The parameter list as plain text, for a person who has reached the endpoint with curl. Programs should read this spec instead.",
+        "responses": {
+          "200": {
+            "description": "Usage text.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiSpec",
+        "summary": "This document",
+        "description": "The OpenAPI description of this endpoint, as JSON.",
+        "responses": {
+          "200": {
+            "description": "The spec.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Every error this endpoint returns, when the request asked for JSON with an Accept header. Without one the same error is served as plain text.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "hint",
+              "status",
+              "documentation"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "bad_request",
+                  "unknown_parameter",
+                  "unknown_value",
+                  "invalid_number",
+                  "out_of_range",
+                  "title_too_long",
+                  "name_empty",
+                  "name_has_slash",
+                  "name_encoding",
+                  "name_too_long",
+                  "method_not_allowed",
+                  "not_found"
+                ],
+                "description": "The class of mistake, stable across releases. Branch on this rather than on the message."
+              },
+              "message": {
+                "type": "string",
+                "description": "What was wrong with this request, in English. Names the offending value; expected to change."
+              },
+              "hint": {
+                "type": "string",
+                "description": "One imperative line describing how to fix the request."
+              },
+              "status": {
+                "type": "integer",
+                "description": "The HTTP status, repeated in the body."
+              },
+              "documentation": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

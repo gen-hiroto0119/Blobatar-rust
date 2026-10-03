@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/blobatar-core", "crates/blobatar-motion", "crates/blobatar-gpui", "crates/blobatar-ui", "crates/blobatar-export", "apps/demo"]
+members = ["crates/blobatar-core", "crates/blobatar-motion", "crates/blobatar-gpui", "crates/blobatar-ui", "crates/blobatar-export", "crates/blobatar-server", "apps/demo"]
 resolver = "2"
 
 [workspace.package]

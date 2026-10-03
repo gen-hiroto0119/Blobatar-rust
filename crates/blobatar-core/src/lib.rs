@@ -7,7 +7,7 @@ pub mod pose;
 pub mod shape;
 pub mod traits;
 
-pub use avatar::{Avatar, Background, Options};
+pub use avatar::{Avatar, Background, Generation, Options};
 pub use layout::Layout;
 pub use pose::{Expression, Pose};
 pub use shape::{Command, Path};

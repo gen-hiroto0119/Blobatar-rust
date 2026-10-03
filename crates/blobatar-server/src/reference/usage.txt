@@ -1,0 +1,71 @@
+blobatar — deterministic avatars over HTTP
+
+  GET /avatar/<name>
+
+A name is anything that stands for somebody: a username, an email, an id,
+a Gravatar hash. The same name always renders the same blobatar.
+
+Parameters (all optional, named as the library names them):
+
+  size, s     8-1024, clamped rather than rejected
+  background  none | square | circle | squircle
+  hue         0-360 degrees, locks colour so the name drives shape only
+  tone        0-1 position in the swatch set, pale to ink; 1 is the top
+              edge and renders as 0, so ink is 0.999
+  expression  idle | happy | sad | mad | surprised | wink | sleepy
+              | smug | unsure | scared | love | shy | sick | thinking
+  title       accessible name, 128 characters or fewer
+  gen         1 | 2 — which shape vocabulary to render under, see below
+
+Examples:
+
+  /avatar/alain00
+  /avatar/alain%40example.com?size=64
+  /avatar/team-rocket?background=squircle&expression=smug
+
+Pinning a generation
+--------------------
+A generation is one frozen name-to-blobatar mapping. Adding a shape is not
+additive — a new silhouette has to take its share from the existing ones —
+so new shapes arrive as a new generation rather than as a change to yours.
+
+  /avatar/alain00?gen=1     round organic boxy nub cloud sun
+  /avatar/alain00?gen=2     …and capsule triangle hexagon droplet
+
+An unversioned URL follows the current major and now renders gen 2. Existing
+URLs that must retain their old shapes should pin ?gen=1 before upgrading.
+
+A generation that has appeared in a URL keeps answering. The list only ever
+grows — a pinned generation is never retired, redirected to a newer
+vocabulary, or answered with a placeholder. That is also why a pinned URL is
+served with a year-long immutable cache rather than a day: it cannot come
+back different, so every cache between here and your reader is free to keep
+it.
+
+Replacing Gravatar
+------------------
+Swap the host and keep the rest of the URL:
+
+  https://www.gravatar.com/avatar/<hash>?s=200&d=identicon
+  https://blobatar.dev/avatar/<hash>?s=200&d=identicon
+
+d, f and r are accepted and ignored — every string renders, so there is
+no missing avatar to fall back to and nothing above a G rating to filter.
+Code using d=404 to detect "this user has no Gravatar" now gets a 200.
+
+The hash is used as the name. Gravatar's digest is one-way, so the email
+cannot be recovered — but the digest is itself derived from the email, so
+each person still gets one stable distinct blobatar. It will not be the
+same one /avatar/<email> gives: pick one scheme per application.
+
+To keep real Gravatars and use blobatar only for people without one, pass
+this endpoint as Gravatar's own fallback instead:
+
+  https://www.gravatar.com/avatar/<hash>?d=<url-encoded blobatar url>
+
+Names are NFC-normalized, trimmed and lowercased before hashing, so
+/avatar/Alain and /avatar/alain render the same blobatar from different
+URLs. Prefer one spelling: each is cached separately by every cache in
+the path.
+
+https://github.com/Alain00/blobatar

@@ -36,3 +36,13 @@ under MIT or Apache-2.0; see `vendor/xattr/LICENSE-MIT` and
 missing-attribute errors to `libc::ENODATA` while macOS and BSD retain
 `libc::ENOATTR`, clear destination buffers in `XAttrs::clone_from`, and
 preserve the BSD system namespace for its final system attribute.
+
+## Frozen avatar API reference assets
+
+`crates/blobatar-server/src/reference/` and
+`crates/blobatar-server/tests/fixtures/api.json` are frozen, upstream-derived
+reference assets from Blobatar commit
+`a7fd546ebede49d0a9fa638945b9e534489782a2`. Generation 1 reference cases use
+the separately integrity-checked `blobatar@1.0.0` archive documented in the
+README. These assets preserve the upstream MIT-licensed API contract; the
+server has no JavaScript runtime or external-service dependency.

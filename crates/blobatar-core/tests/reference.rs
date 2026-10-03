@@ -4,6 +4,44 @@ use blobatar_core::{
 };
 use serde_json::{Value, json};
 
+#[test]
+fn generation1_reference() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/gen1-1.0.0.json")).unwrap();
+    for (index, case) in fixture["cases"].as_array().unwrap().iter().enumerate() {
+        let options: Options = serde_json::from_value(case["options"].clone()).unwrap();
+        let avatar = Avatar::with_generation(
+            case["seed"].as_str().unwrap(),
+            &options,
+            blobatar_core::Generation::One,
+        );
+        let layout = json!(avatar.layout);
+        for key in ["body", "eyes", "petals"] {
+            close(&layout[key], &case[key], &format!("gen1[{index}].{key}"));
+        }
+        assert_eq!(layout["shape"], case["shape"], "shape {index}");
+        assert_eq!(json!(avatar.palette), case["palette"], "palette {index}");
+        assert_eq!(
+            avatar.layout.body_path().to_svg(),
+            case["bodyPath"],
+            "body {index}"
+        );
+        assert_eq!(
+            json!(
+                avatar
+                    .layout
+                    .eye_paths()
+                    .iter()
+                    .map(|p| p.to_svg())
+                    .collect::<Vec<_>>()
+            ),
+            case["eyePaths"],
+            "eyes {index}"
+        );
+        assert_eq!(avatar.svg(&options), case["svg"], "SVG {index}");
+        assert_eq!(avatar.uri(&options), case["uri"], "URI {index}");
+    }
+}
+
 fn close(actual: &Value, expected: &Value, path: &str) {
     match expected {
         Value::Number(n) => {
