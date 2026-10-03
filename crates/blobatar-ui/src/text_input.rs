@@ -585,6 +585,10 @@ impl Render for TextInput {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
+            .w_full()
+            .h(px(38.0))
+            .min_h(px(38.0))
+            .flex_shrink_0()
             .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
             .tab_stop(true)
