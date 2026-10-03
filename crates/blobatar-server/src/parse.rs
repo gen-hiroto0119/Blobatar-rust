@@ -44,20 +44,30 @@ pub(crate) fn parse_options(query: Option<&str>) -> Result<ParsedOptions, ApiErr
     if let Some(query) = query {
         for (key, value) in form_urlencoded::parse(query.as_bytes()) {
             let key = key.into_owned();
-            if !QUERY_PARAMETER_NAMES.contains(&key.as_str()) {
-                return Err(unknown_parameter(&key));
-            }
             if seen.insert(key.clone()) {
                 first.push((key, value.into_owned()));
             }
         }
     }
 
+    for (key, _) in &first {
+        if !QUERY_PARAMETER_NAMES.contains(&key.as_str()) {
+            return Err(unknown_parameter(key));
+        }
+    }
+
     let mut options = Options::default();
     let mut generation = Generation::Two;
     let mut generation_pinned = false;
-    for (key, value) in &first {
-        match key.as_str() {
+    for key in ["gen", "background", "hue", "tone", "expression", "title"] {
+        let Some(value) = first
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value)
+        else {
+            continue;
+        };
+        match key {
             "background" => {
                 if !BACKGROUND_NAMES.contains(&value.as_str()) {
                     return Err(unknown_value("background", value, BACKGROUND_NAMES));
@@ -192,7 +202,7 @@ fn parse_in_range(name: &str, value: &str, min: f64, max: f64) -> Result<f64, Ap
     let number = parse_ecmascript_number(value).ok_or_else(|| {
         ApiError::bad_request(
             "invalid_number",
-            format!("{name} must be a number, got {}", json_string(value)),
+            format!("{name} must be a number, got {}", quoted(value)),
         )
     })?;
     if number < min || number > max {
@@ -265,7 +275,7 @@ fn unknown_parameter(name: &str) -> ApiError {
         "unknown_parameter",
         format!(
             "unknown parameter {} — expected one of {}",
-            json_string(name),
+            quoted(name),
             QUERY_PARAMETER_NAMES.join(", ")
         ),
     )
@@ -276,7 +286,7 @@ fn unknown_value(name: &str, value: &str, expected: &[&str]) -> ApiError {
         "unknown_value",
         format!(
             "unknown {name} {} — expected one of {}",
-            json_string(value),
+            quoted(value),
             expected.join(", ")
         ),
     )
@@ -286,8 +296,8 @@ fn expression_names() -> Vec<&'static str> {
     Expression::ALL.into_iter().map(Expression::name).collect()
 }
 
-fn json_string(value: &str) -> String {
-    serde_json::to_string(value).expect("strings serialize as JSON")
+fn quoted(value: &str) -> String {
+    format!("\"{value}\"")
 }
 
 fn display_number(value: f64) -> String {

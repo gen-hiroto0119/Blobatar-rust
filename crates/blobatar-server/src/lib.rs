@@ -29,7 +29,7 @@ async fn handle(request: Request<Body>) -> Response<Body> {
                 .as_deref()
                 .unwrap_or("http://127.0.0.1:3000"),
         )
-    } else if path == "/" || path == "/avatar/" {
+    } else if path == "/" {
         help_response()
     } else if let Some(raw_name) = path.strip_prefix("/avatar/") {
         match avatar_response(&request, &method, &url, raw_name) {
@@ -56,6 +56,9 @@ fn avatar_response(
 ) -> Result<Response<Body>, ApiError> {
     if method != Method::GET && method != Method::HEAD {
         return Err(ApiError::method_not_allowed(method.as_str()));
+    }
+    if raw_name.is_empty() {
+        return Ok(help_response());
     }
 
     let parsed = parse::parse_options(url.as_ref().and_then(Url::query))?;

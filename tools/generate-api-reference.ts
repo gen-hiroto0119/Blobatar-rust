@@ -79,6 +79,22 @@ for (const value of [tag!, '"stale"', `W/${tag}`, `${tag}, "other"`, "*"]) {
   for (const method of ["GET", "HEAD"]) await request("/avatar/etag?gen=1", method, { "if-none-match": value });
 }
 const target = "../crates/blobatar-server/";
+// Error precedence is independent of query order; quoted/control text stays literal.
+for (const query of [
+  "tone=bad&gen=3",
+  "hue=bad&background=false",
+  "expression=bad&tone=bad",
+  `hue=${encodeURIComponent('"\\\n')}`,
+  `${encodeURIComponent('"\\\n')}=bad`,
+  `expression=${encodeURIComponent('"\\\n')}`,
+]) {
+  for (const headers of [{}, { accept: "application/json" }]) {
+    await request(`/avatar/edge?${query}`, "GET", headers);
+  }
+}
+for (const headers of [{}, { accept: "application/json" }]) {
+  await request("/avatar/", "POST", headers);
+}
 const outputs = {
   "tests/fixtures/api.json": JSON.stringify({ meta: { commit: expectedCommit, generation1Integrity: integrity, caseCount: cases.length }, cases }) + "\n",
   "src/reference/usage.txt": await usage().text(),

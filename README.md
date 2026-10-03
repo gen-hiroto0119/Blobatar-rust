@@ -185,9 +185,11 @@ bun tools/generate-render-matrix.ts .reference ./render-matrix-reference
 Review any fixture diff rather than accepting new output to hide a regression.
 Hash streams, shape names, palette hex and serialized paths are compared exactly.
 Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
-The HTTP fixture contains 230 exact request/response cases; its help, errors and
-OpenAPI assets are frozen from upstream commit `a7fd546`. The Generation 1
-fixture contains 1,543 cases and verifies the archive integrity above.
+The HTTP fixture contains 244 exact request/response cases, including error
+precedence, quoted/control-character values and `/avatar/` method handling; its
+help, errors and OpenAPI assets are frozen from upstream commit `a7fd546`. The
+Generation 1 fixture contains 1,543 cases and verifies the archive integrity
+above.
 
 ## Delivery stages
 
