@@ -608,6 +608,18 @@ version = "0.1.0"
 dependencies = [
  "blobatar-core",
  "blobatar-gpui",
+ "blobatar-ui",
+]
+
+[[package]]
+name = "blobatar-export"
+version = "0.1.0"
+dependencies = [
+ "blobatar-core",
+ "resvg",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -631,6 +643,19 @@ dependencies = [
  "blobatar-core",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "blobatar-ui"
+version = "0.1.0"
+dependencies = [
+ "blobatar-core",
+ "blobatar-export",
+ "blobatar-gpui",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]

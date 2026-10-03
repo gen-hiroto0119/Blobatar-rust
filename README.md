@@ -5,6 +5,52 @@ native GPUI on macOS. This repository is under active development, **not a
 complete port**. Runtime components must not depend on JavaScript, a WebView,
 or an upstream service.
 
+## Generation 2 editor
+
+Open **エディターを開く / Open editor** in the demo, or run:
+
+```sh
+cargo run -p blobatar-demo -- --editor
+```
+
+The editor keeps the existing motion/gaze demo separate. It provides the pinned
+25-axis control set, shape/tone candidate sets, lock/unlock, name shuffle, reset,
+neutral-layout eye-fit readback, seven-name crowd, backgrounds, expressions and
+motion modes. All-selected **retains the candidate array** (uniform candidate
+selection); Auto removes the override (the original weighted distribution).
+Shape-limited controls use the union of recognized candidate silhouettes.
+Advanced JSON edits the entire trait map without dropping unknown trait keys.
+
+GPUI text input implements selection, clipboard actions, grapheme navigation and
+IME composition. Tab moves between controls; sliders also accept arrows and
+Home/End. Native macOS interaction and accessibility acceptance remain pending.
+
+SVG and PNG exports are static; PNG defaults to transparent 512×512 unless a
+background is selected. Save dialogs can be cancelled. Export writes a temporary
+file in the destination directory and atomically replaces the chosen file only
+after writing succeeds. Settings JSON is versioned and restores all Generation 2
+options, expressions, candidate arrays, motion and manual reduced motion.
+Unsupported generations/schemas and invalid JSON are rejected without replacing
+the current editor state. Generation 1 settings will be added with that renderer.
+
+The six upstream framework formats, string and HTTP snippets preserve the pinned
+editor's name/traits/motion surface. They do **not** encode background, expression
+or other additional options; the UI warns about this. Rust/GPUI and settings JSON
+carry the full configuration. The HTTP example defaults to a **local** endpoint,
+not the public Blobatar service; the server is not implemented yet. The Rust
+snippet belongs in a fallible function with a GPUI context (see the generator
+example). Runtime rendering, export and snippet generation use Rust only.
+
+Frozen editor references cover 10,624 picker transitions, 315 readback states and
+720 upstream snippets. Regenerate only against the pinned, clean checkout:
+
+```sh
+bun tools/generate-editor-reference.ts ../blobatar-reference --write
+# Omit --write to verify the frozen fixture without modifying it.
+cargo test -p blobatar-ui --test reference
+cargo test -p blobatar-export
+```
+
 ## Compatibility baseline
 
 - Generation 2: `blobatar 2.7.0`, commit
@@ -72,7 +118,7 @@ Layout floats use `abs(a-b) <= max(1e-12, 1e-9 * max(abs(a),abs(b)))`.
 | A/B | Workspace, generation 2 geometry, traits, colors, static SVG/URI, reference comparisons | Static core comparisons pass; integrated into native demo |
 | C | GPUI vector component and macOS static image comparison | Ten shapes, fourteen static expressions and the 400-avatar size/background/surface matrix compared on macOS; see [comparison notes](docs/render-matrix.md) |
 | D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; gaze adapter wired, native gaze/hover verification pending |
-| E | Editor, exports/settings, reusable showcase components | Not implemented |
+| E | Editor, exports/settings, reusable showcase components | Generation 2 editor and exports/settings implemented; native interaction acceptance and reusable showcase components pending |
 | F | Generation 1, avatar API, SQLite wall/API/native wall | Not implemented |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
 

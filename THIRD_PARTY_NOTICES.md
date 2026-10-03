@@ -19,6 +19,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR OTHER DEALINGS IN THE SOFTWARE.
 
+## GPUI text input
+
+`crates/blobatar-ui/src/text_input.rs` adapts the GPUI 0.2.2
+`examples/input.rs` implementation from Zed Industries under Apache-2.0.
+The original notice is preserved in `crates/blobatar-ui/LICENSE-GPUI`.
+Local changes integrate the editor, scope shortcuts, handle IME selection offsets,
+and correct point-to-character lookup.
+
 ## xattr 0.2.3
 
 Vendored from [Stebalien/xattr](https://github.com/Stebalien/xattr), upstream

@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 blobatar-core = { path = "../../crates/blobatar-core" }
 blobatar-gpui = { path = "../../crates/blobatar-gpui" }
+blobatar-ui = { path = "../../crates/blobatar-ui" }

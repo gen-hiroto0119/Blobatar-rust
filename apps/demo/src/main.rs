@@ -317,6 +317,9 @@ impl Render for Demo {
             .flex_col()
             .gap_6()
             .child(div().text_2xl().child("Blobatar / Native Rust"))
+            .child(div().id("open-editor").px_3().py_2().rounded_md().bg(rgb(0x354a70)).cursor_pointer()
+                .child("エディターを開く / Open editor")
+                .on_click(cx.listener(|_, _, _, cx| { open_editor(cx); })))
             .child(
                 div()
                     .text_sm()
@@ -458,13 +461,15 @@ impl Render for Demo {
             .child(
                 div()
                     .text_sm()
-                    .child("視線: Noneはidleへ、Restは中央、Stopは即時解除。顔測定の完全互換・エディター・保存/APIは未完了です。"),
+                    .child("視線: Noneはidleへ、Restは中央、Stopは即時解除。顔測定の完全互換・APIは未完了です。"),
             )
     }
 }
 
 fn main() {
-    let matrix = match matrix::Matrix::from_args(&std::env::args().skip(1).collect::<Vec<_>>()) {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let editor = args.as_slice() == ["--editor"];
+    let matrix = match matrix::Matrix::from_args(if editor { &[] } else { &args }) {
         Ok(matrix) => matrix,
         Err(message) => {
             eprintln!("{message}");
@@ -472,6 +477,12 @@ fn main() {
         }
     };
     Application::new().run(move |cx: &mut App| {
+        blobatar_ui::init(cx);
+        if editor {
+            open_editor(cx);
+            cx.activate(true);
+            return;
+        }
         let dimensions = if matrix.is_some() {
             size(px(1500.0), px(850.0))
         } else {
@@ -495,4 +506,20 @@ fn main() {
         }
         cx.activate(true);
     });
+}
+
+fn open_editor(cx: &mut App) {
+    let bounds = Bounds::centered(None, size(px(1180.0), px(920.0)), cx);
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(gpui::TitlebarOptions {
+                title: Some("Blobatar Editor".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        |_, cx| cx.new(blobatar_ui::Editor::new),
+    )
+    .expect("open Blobatar editor");
 }
