@@ -18,3 +18,12 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## xattr 0.2.3
+
+Vendored from [Stebalien/xattr](https://github.com/Stebalien/xattr), upstream
+commit `e42c1da499b72103a9c9ef5693ff31f998ad31e6`. The crate is dual-licensed
+under MIT or Apache-2.0; see `vendor/xattr/LICENSE-MIT` and
+`vendor/xattr/LICENSE-APACHE`. The local compatibility patch maps Linux and
+Android missing-attribute errors to `libc::ENODATA`; macOS and BSD retain
+`libc::ENOATTR`.
