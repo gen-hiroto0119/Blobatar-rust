@@ -14,10 +14,13 @@ use blobatar_motion::{
 };
 use gpui::{
     Bounds, Context, DispatchPhase, IntoElement, MouseExitEvent, MouseMoveEvent, Pixels, Render,
-    Window, div, prelude::*,
+    Subscription, Window, div, prelude::*,
 };
 
-use crate::{Blobatar, Drawing, PaintFrame, parse_color};
+use crate::{
+    Blobatar, Drawing, PaintFrame, parse_color,
+    system_motion::{self, SystemMotion},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Animate {
@@ -39,6 +42,9 @@ pub struct AnimatedBlobatar {
     size: f32,
     mode: Animate,
     reduced_motion: bool,
+    system_reduced_motion: bool,
+    motion_subscription: Option<Subscription>,
+    visible: bool,
     hovered: bool,
     amplitude_from: f64,
     amplitude_to: f64,
@@ -86,6 +92,9 @@ impl AnimatedBlobatar {
             size: options.size.unwrap_or(64.0) as f32,
             mode: Animate::Hover,
             reduced_motion: false,
+            system_reduced_motion: false,
+            motion_subscription: None,
+            visible: false,
             hovered: false,
             amplitude_from: 0.0,
             amplitude_to: 0.0,
@@ -146,7 +155,7 @@ impl AnimatedBlobatar {
             fill(&expression.palette(&self.avatar.palette)),
             self.now(),
         );
-        if self.reduced_motion || self.mode == Animate::Never {
+        if self.motion_disabled() {
             self.morph.finish();
         }
         cx.notify();
@@ -162,7 +171,7 @@ impl AnimatedBlobatar {
             0.0
         };
         self.amplitude_start_ms = now;
-        if mode == Animate::Never {
+        if self.motion_disabled() {
             self.morph.finish();
         }
         cx.notify();
@@ -170,7 +179,7 @@ impl AnimatedBlobatar {
 
     pub fn set_reduced_motion(&mut self, reduced: bool, cx: &mut Context<Self>) {
         self.reduced_motion = reduced;
-        if reduced {
+        if self.motion_disabled() {
             self.morph.finish();
         }
         cx.notify();
@@ -180,19 +189,39 @@ impl AnimatedBlobatar {
         self.epoch.elapsed().as_secs_f64() * 1000.0
     }
 
+    fn motion_disabled(&self) -> bool {
+        self.reduced_motion || self.system_reduced_motion || self.mode == Animate::Never
+    }
+
+    fn needs_frame(&self, now: f64, pose: blobatar_core::Pose, amplitude: f64) -> bool {
+        self.visible
+            && !self.motion_disabled()
+            && (amplitude > 0.0
+                || self.amplitude_to > 0.0
+                || pose.shake != 0.0
+                || pose.rock != 0.0
+                || self.morph.is_running(now)
+                || now < self.lift_start_ms + self.lift_duration()
+                || self.gaze.as_ref().is_some_and(GazeDriver::needs_frame))
+    }
+
     fn amplitude(&self, now: f64) -> f64 {
         let progress = ease::ease_out(((now - self.amplitude_start_ms) / 400.0).clamp(0.0, 1.0));
         self.amplitude_from + (self.amplitude_to - self.amplitude_from) * progress
     }
 
     fn lift(&self, now: f64) -> f64 {
-        let duration = if self.hovered { 220.0 } else { 160.0 };
+        let duration = self.lift_duration();
         let progress = ease::bezier(
             ((now - self.lift_start_ms) / duration).clamp(0.0, 1.0),
             [0.23, 1.0, 0.32, 1.0],
         );
         let target = if self.hovered { 1.0 } else { 0.0 };
         self.lift_from + (target - self.lift_from) * progress
+    }
+
+    fn lift_duration(&self) -> f64 {
+        if self.hovered { 220.0 } else { 160.0 }
     }
 
     fn hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
@@ -215,7 +244,8 @@ impl AnimatedBlobatar {
 impl AnimatedBlobatar {
     fn paint_frame(&mut self, bounds: Bounds<Pixels>, window: &mut Window) -> Option<PaintFrame> {
         let now = self.now();
-        let still = self.reduced_motion || self.mode == Animate::Never;
+        let still = self.motion_disabled();
+        self.visible = bounds.intersects(&window.content_mask().bounds);
         let viewport = FaceBounds {
             x: f64::from(f32::from(bounds.origin.x)),
             y: f64::from(f32::from(bounds.origin.y)),
@@ -227,10 +257,12 @@ impl AnimatedBlobatar {
                 gaze.remeasure(viewport, self.gaze_travel, None);
             }
             gaze.set_enabled(!still);
-            gaze.tick(now);
+            if self.visible {
+                gaze.tick(now);
+            }
         }
         self.viewport = viewport;
-        if still {
+        if still || !self.visible {
             return None;
         }
         let gaze = self.gaze.as_ref().map(GazeDriver::frame);
@@ -254,14 +286,7 @@ impl AnimatedBlobatar {
             hover,
             gaze.map_or(&[], |frame| frame.eyes.as_slice()),
         );
-        if amplitude > 0.0
-            || self.amplitude_to > 0.0
-            || shown.pose.shake != 0.0
-            || shown.pose.rock != 0.0
-            || self.morph.is_running(now)
-            || now < self.lift_start_ms + 220.0
-            || self.gaze.as_ref().is_some_and(GazeDriver::needs_frame)
-        {
+        if self.needs_frame(now, shown.pose, amplitude) {
             window.request_animation_frame();
         }
         Some(PaintFrame {
@@ -274,7 +299,20 @@ impl AnimatedBlobatar {
 
 impl Render for AnimatedBlobatar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let still = self.reduced_motion || self.mode == Animate::Never;
+        if self.motion_subscription.is_none() {
+            self.system_reduced_motion = system_motion::current(cx);
+            if self.motion_disabled() {
+                self.morph.finish();
+            }
+            self.motion_subscription = Some(cx.observe_global::<SystemMotion>(|this, cx| {
+                this.system_reduced_motion = cx.global::<SystemMotion>().reduced;
+                if this.motion_disabled() {
+                    this.morph.finish();
+                }
+                cx.notify();
+            }));
+        }
+        let still = self.motion_disabled();
         let mut blobatar = Blobatar::from_drawing(if still {
             self.still_drawing.clone()
         } else {
@@ -310,7 +348,9 @@ impl Render for AnimatedBlobatar {
                                 x: f64::from(f32::from(event.position.x)),
                                 y: f64::from(f32::from(event.position.y)),
                             });
-                            cx.notify();
+                            if this.visible {
+                                cx.notify();
+                            }
                         }
                     });
                 }
@@ -320,7 +360,9 @@ impl Render for AnimatedBlobatar {
                     let _ = entity.update(cx, |this, cx| {
                         if let Some(gaze) = &mut this.gaze {
                             gaze.pointer_left();
-                            cx.notify();
+                            if this.visible {
+                                cx.notify();
+                            }
                         }
                     });
                 }
@@ -356,4 +398,45 @@ fn fill(palette: &Palette) -> Fill {
 
 fn rgb([r, g, b]: [u8; 3]) -> gpui::Rgba {
     gpui::rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn animation_requests_obey_visibility_and_motion_preferences() {
+        let mut view = AnimatedBlobatar::new("scheduler", &Options::default());
+        view.visible = true;
+        view.mode = Animate::Always;
+        view.amplitude_to = 1.0;
+        let pose = Expression::Thinking.pose();
+        assert!(view.needs_frame(1000.0, pose, 1.0));
+        view.visible = false;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.visible = true;
+        view.system_reduced_motion = true;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.system_reduced_motion = false;
+        view.reduced_motion = true;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.reduced_motion = false;
+        view.mode = Animate::Never;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+    }
+
+    #[test]
+    fn settled_gaze_and_completed_hover_exit_park_requests() {
+        let mut view = AnimatedBlobatar::new("scheduler", &Options::default());
+        view.visible = true;
+        view.gaze.as_mut().unwrap().look_at(Target::Rest);
+        assert!(view.needs_frame(1000.0, Expression::Idle.pose(), 0.0));
+        for frame in 0..240 {
+            view.gaze.as_mut().unwrap().tick(f64::from(frame) * 16.0);
+        }
+        assert!(!view.needs_frame(4000.0, Expression::Idle.pose(), 0.0));
+        view.lift_start_ms = 4000.0;
+        assert!(view.needs_frame(4159.0, Expression::Idle.pose(), 0.0));
+        assert!(!view.needs_frame(4160.0, Expression::Idle.pose(), 0.0));
+    }
 }

@@ -90,8 +90,13 @@ unchanged. URI encoding otherwise preserves upstream's raw-Unicode behavior.
 of regenerating traits on each frame. The demo exposes all fourteen expression
 targets, off/hover/always modes, and an explicit reduced-motion toggle. Static and
 reduced-motion modes use the baked drawing and do not schedule continuous frames.
-OS reduced-motion detection, offscreen scheduling, keyboard navigation,
-and performance measurements remain incomplete.
+On macOS, an app-wide NSWorkspace notification observer tracks the OS Reduce
+Motion setting without polling. OS or explicit reduced motion wins over Always
+and immediately finishes the current morph. Other platforms currently have only
+the explicit toggle. Offscreen canvases skip motion sampling and frame requests;
+window-pointer state still updates without notifying invisible views. Keyboard
+navigation and performance measurements remain incomplete. Native OS-setting
+and offscreen validation is pending.
 
 The transform corpus contains 6,048 fixed-time cases: three Unicode seeds, three
 shapes, fourteen expressions, sixteen times (including blink boundaries), and

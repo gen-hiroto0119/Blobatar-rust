@@ -9,6 +9,7 @@ use gpui::{
 
 pub use gpui;
 mod animated;
+mod system_motion;
 pub use animated::{Animate, AnimatedBlobatar};
 pub use blobatar_core::geometry::Bounds as GazeBounds;
 pub use blobatar_motion::{driver::Target as GazeTarget, gaze::Mark as GazePoint};
