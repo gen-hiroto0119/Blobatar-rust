@@ -7,6 +7,7 @@ use blobatar_gpui::{
     },
 };
 use std::sync::Arc;
+mod matrix;
 
 struct Demo {
     drawings: Vec<Arc<Drawing>>,
@@ -224,20 +225,35 @@ impl Render for Demo {
 }
 
 fn main() {
-    Application::new().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(1100.0), px(940.0)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("Blobatar".into()),
-                    ..Default::default()
-                }),
+    let matrix = match matrix::Matrix::from_args(&std::env::args().skip(1).collect::<Vec<_>>()) {
+        Ok(matrix) => matrix,
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(2);
+        }
+    };
+    Application::new().run(move |cx: &mut App| {
+        let dimensions = if matrix.is_some() {
+            size(px(1500.0), px(850.0))
+        } else {
+            size(px(1100.0), px(940.0))
+        };
+        let bounds = Bounds::centered(None, dimensions, cx);
+        let options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(gpui::TitlebarOptions {
+                title: Some("Blobatar".into()),
                 ..Default::default()
-            },
-            |_, cx| cx.new(Demo::new),
-        )
-        .expect("open Blobatar window");
+            }),
+            ..Default::default()
+        };
+        if let Some(matrix) = matrix {
+            cx.open_window(options, |_, cx| cx.new(|_| matrix))
+                .expect("open rendering matrix");
+        } else {
+            cx.open_window(options, |_, cx| cx.new(Demo::new))
+                .expect("open Blobatar window");
+        }
         cx.activate(true);
     });
 }

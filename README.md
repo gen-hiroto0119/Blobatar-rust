@@ -28,6 +28,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build --workspace
 cargo run -p blobatar-demo
+# Static comparison gallery: five sizes × four backgrounds × two host surfaces.
+cargo run -p blobatar-demo -- --matrix 256 squircle dark
 cargo run -p blobatar-core --example export -- Alice > avatar.svg
 ```
 
@@ -47,6 +49,8 @@ bun tools/generate-expression-reference.ts .reference --write
 bun tools/generate-expression-reference.ts .reference
 bun tools/generate-transform-reference.ts .reference --write
 bun tools/generate-transform-reference.ts .reference
+# Freeze matching reference pages and their SVG inputs into a local output folder.
+bun tools/generate-render-matrix.ts .reference ./render-matrix-reference
 ```
 
 Review any fixture diff rather than accepting new output to hide a regression.
