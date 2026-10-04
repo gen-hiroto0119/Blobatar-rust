@@ -604,6 +604,7 @@ impl Editor {
             .child(
                 div()
                     .id("editor-code")
+                    .flex()
                     .w_full()
                     .flex_shrink_0()
                     .overflow_x_scroll()
@@ -616,8 +617,10 @@ impl Editor {
                     .line_height(px(20.0))
                     .whitespace_nowrap()
                     .child(
-                        StyledText::new(self.code.clone())
-                            .with_highlights(self.code_highlights.clone()),
+                        div().flex_shrink_0().child(
+                            StyledText::new(self.code.clone())
+                                .with_highlights(self.code_highlights.clone()),
+                        ),
                     ),
             )
     }
