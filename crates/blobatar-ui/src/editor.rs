@@ -24,18 +24,22 @@ impl EditorState {
     }
 
     pub fn avatar(&self) -> Avatar {
-        Avatar::new(self.seed(), &self.settings.options)
+        Avatar::with_generation(
+            self.seed(),
+            &self.settings.options,
+            self.settings.generation(),
+        )
     }
 
     pub fn neutral_layout(&self) -> Layout {
         let mut options = self.settings.options.clone();
         options.expression = None;
-        Avatar::new(self.seed(), &options).layout
+        Avatar::with_generation(self.seed(), &options, self.settings.generation()).layout
     }
 
     pub fn reader(&self) -> Traits<'_> {
         Traits::new(
-            &self.settings.name,
+            self.seed(),
             self.settings.options.normalize,
             &self.settings.options.traits,
         )
@@ -94,8 +98,20 @@ impl EditorState {
 
     pub fn applicable_axes(&self) -> Vec<&'static Axis> {
         let layout = self.neutral_layout();
-        let shapes = axes::candidates(self.settings.options.traits.get("shape"), &layout.shape);
+        let shapes = axes::candidates_for(
+            self.settings.options.traits.get("shape"),
+            &layout.shape,
+            self.shape_choices(),
+        );
         AXES.iter().filter(|axis| axis.applies(&shapes)).collect()
+    }
+
+    pub fn shape_choices(&self) -> &'static [Choice] {
+        if self.settings.generation == 1 {
+            &axes::GENERATION1_SHAPES
+        } else {
+            &axes::SHAPES
+        }
     }
 
     pub fn ordered_pins(&self) -> Vec<(&str, &Override)> {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use blobatar_core::{Avatar, Command, Options, Path};
+use blobatar_core::{Avatar, Command, Generation, Options, Path};
 use blobatar_motion::transform::{Affine, FrameTransforms};
 use gpui::{
     App, Bounds, IntoElement, PathBuilder, Pixels, RenderOnce, Rgba, Styled, Window, canvas, point,
@@ -90,7 +90,11 @@ impl Blobatar {
     }
 
     pub fn with_options(name: &str, options: &Options) -> Self {
-        let avatar = Avatar::new(name, options);
+        Self::with_generation(name, options, Generation::Two)
+    }
+
+    pub fn with_generation(name: &str, options: &Options, generation: Generation) -> Self {
+        let avatar = Avatar::with_generation(name, options, generation);
         Self::from_drawing(Arc::new(Drawing::new(&avatar, options)))
     }
 

@@ -191,6 +191,32 @@ pub const SHAPES: [Choice; 10] = [
         at: 0.99,
     },
 ];
+pub const GENERATION1_SHAPES: [Choice; 6] = [
+    Choice {
+        name: "round",
+        at: 0.14,
+    },
+    Choice {
+        name: "organic",
+        at: 0.43,
+    },
+    Choice {
+        name: "boxy",
+        at: 0.65,
+    },
+    Choice {
+        name: "nub",
+        at: 0.78,
+    },
+    Choice {
+        name: "cloud",
+        at: 0.885,
+    },
+    Choice {
+        name: "sun",
+        at: 0.965,
+    },
+];
 pub const TONES: [Choice; 6] = [
     Choice {
         name: "pastel",
@@ -241,11 +267,19 @@ pub fn narrow_pin(values: Vec<f64>) -> Option<Override> {
 }
 
 pub fn candidates<'a>(pin: Option<&Override>, resolved: &'a str) -> Vec<&'a str> {
+    candidates_for(pin, resolved, &SHAPES)
+}
+
+pub fn candidates_for<'a>(
+    pin: Option<&Override>,
+    resolved: &'a str,
+    shapes: &'static [Choice],
+) -> Vec<&'a str> {
     let named = match pin {
         Some(Override::Candidates(values)) => values
             .iter()
             .filter_map(|value| {
-                SHAPES
+                shapes
                     .iter()
                     .find(|shape| shape.at == *value)
                     .map(|shape| shape.name)

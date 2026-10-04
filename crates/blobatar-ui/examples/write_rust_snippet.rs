@@ -6,6 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .ok_or("Provide an output .rs path")?;
     let mut state = EditorState::default();
+    state.settings.generation = 1;
     state.settings.name = "ひろと \"# 🦀\n".into();
     state.settings.options.expression = Some(Expression::Love);
     state.settings.options.background = Some(Background::Kind("squircle".into()));

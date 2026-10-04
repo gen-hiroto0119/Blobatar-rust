@@ -1,6 +1,6 @@
 use std::{io::Write, path::Path};
 
-use blobatar_core::{Avatar, Options, traits::Override};
+use blobatar_core::{Avatar, Generation, Options, traits::Override};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -40,12 +40,20 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn generation(&self) -> Generation {
+        if self.generation == 1 {
+            Generation::One
+        } else {
+            Generation::Two
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != 1 {
             return Err("Unsupported settings schema".into());
         }
-        if self.generation != 2 {
-            return Err("Only Generation 2 settings are supported yet".into());
+        if !matches!(self.generation, 1 | 2) {
+            return Err("Generation must be 1 or 2".into());
         }
         if self.name.len() > 16_384
             || self
@@ -106,7 +114,7 @@ impl Settings {
         } else {
             &self.name
         };
-        Ok(Avatar::new(seed, &self.options).svg(&self.options))
+        Ok(Avatar::with_generation(seed, &self.options, self.generation()).svg(&self.options))
     }
 
     pub fn png(&self, pixels: u32) -> Result<Vec<u8>, String> {
@@ -168,6 +176,31 @@ mod tests {
     }
 
     #[test]
+    fn generation_one_roundtrips_and_exports_its_frozen_geometry() {
+        let mut settings = Settings {
+            generation: 1,
+            ..Settings::default()
+        };
+        settings
+            .options
+            .traits
+            .insert("shape".into(), Override::Fixed(0.65));
+        settings.options.expression = Some(Expression::Thinking);
+        let restored = Settings::from_json(&settings.to_json().unwrap()).unwrap();
+        assert_eq!(restored.generation, 1);
+        let expected = Avatar::with_generation(&settings.name, &settings.options, Generation::One);
+        assert_eq!(expected.layout.shape, "boxy");
+        assert_eq!(restored.svg().unwrap(), expected.svg(&settings.options));
+        assert_ne!(
+            restored.svg().unwrap(),
+            Avatar::new(&settings.name, &settings.options).svg(&settings.options)
+        );
+        let image = resvg::tiny_skia::Pixmap::decode_png(&restored.png(512).unwrap()).unwrap();
+        assert_eq!((image.width(), image.height()), (512, 512));
+        assert_eq!(image.pixel(0, 0).unwrap().alpha(), 0);
+    }
+
+    #[test]
     fn png_defaults_to_transparency_and_requested_dimensions() {
         let settings = Settings::default();
         let png = settings.png(512).unwrap();
@@ -193,7 +226,7 @@ mod tests {
     #[test]
     fn unsupported_or_invalid_settings_are_rejected() {
         let mut settings = Settings {
-            generation: 1,
+            generation: 3,
             ..Settings::default()
         };
         assert!(settings.validate().is_err());

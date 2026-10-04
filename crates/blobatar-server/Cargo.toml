@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 axum = "=0.8.6"
 blobatar-core = { path = "../blobatar-core" }
+blobatar-wall = { path = "../blobatar-wall" }
 ryu-js = "=0.2.2"
 serde.workspace = true
 serde_json.workspace = true

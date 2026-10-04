@@ -19,7 +19,7 @@ use rand::Rng;
 
 use crate::{
     advanced_json::AdvancedJsonDraft,
-    axes::{self, Axis, Choice, Group, Kind, SHAPES, TONES},
+    axes::{self, Axis, Choice, Group, Kind, TONES},
     editor::EditorState,
     snippet,
     text_input::TextInput,
@@ -102,7 +102,12 @@ impl Editor {
         };
         if geometry_changed {
             self.preview = cx.new(|_| {
-                AnimatedBlobatar::new(self.state.seed(), &self.state.settings.options).size(192.0)
+                AnimatedBlobatar::with_generation(
+                    self.state.seed(),
+                    &self.state.settings.options,
+                    self.state.settings.generation(),
+                )
+                .size(192.0)
             });
         }
         self.preview.update(cx, |preview, cx| {
@@ -117,7 +122,11 @@ impl Editor {
             .iter()
             .map(|name| {
                 Arc::new(Drawing::new(
-                    &Avatar::new(name, &self.state.settings.options),
+                    &Avatar::with_generation(
+                        name,
+                        &self.state.settings.options,
+                        self.state.settings.generation(),
+                    ),
                     &self.state.settings.options,
                 ))
             })
@@ -562,6 +571,21 @@ impl Editor {
             .p_4()
             .rounded_lg()
             .bg(rgb(0x181e29))
+            .child(div().text_sm().child("世代 / Generation"))
+            .child(div().flex().gap_2().children([1, 2].into_iter().map(|generation| {
+                self.button(
+                    format!("generation-{generation}"),
+                    format!("生成{generation} / Generation {generation}"),
+                    self.state.settings.generation == generation,
+                    cx,
+                    move |this, _, cx| {
+                        this.state.settings.generation = generation;
+                        this.dragging = None;
+                        this.status = "世代を変更しました。固定した数値は保持します / Numeric overrides are preserved".into();
+                        this.refresh(true, cx);
+                    },
+                )
+            })))
             .child(div().text_sm().child("背景 / Background"))
             .child(
                 div().flex().flex_wrap().gap_2().children(
@@ -653,7 +677,7 @@ impl Editor {
                             .iter()
                             .filter(|axis| axis.group == group)
                             .map(|axis| match axis.kind {
-                                Kind::Shape => self.picker("shape", &SHAPES, cx).into_any_element(),
+                                Kind::Shape => self.picker("shape", self.state.shape_choices(), cx).into_any_element(),
                                 Kind::Tone => self.picker("tone", &TONES, cx).into_any_element(),
                                 Kind::Slider => self.slider(axis, cx).into_any_element(),
                             }),
@@ -770,7 +794,10 @@ impl Render for Editor {
                     ),
             )
             .child(div().text_xs().child(if self.status.is_empty() {
-                "生成2 / Generation 2 · SVG/PNGは静止画です · Tabと矢印キーで操作".into()
+                format!(
+                    "生成{} / Generation {} · SVG/PNGは静止画です · Tabと矢印キーで操作",
+                    self.state.settings.generation, self.state.settings.generation
+                )
             } else {
                 self.status.clone()
             }))

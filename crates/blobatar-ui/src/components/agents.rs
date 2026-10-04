@@ -1,11 +1,13 @@
 use super::{PresenceAvatar, PresenceState};
 use blobatar_core::Options;
 use blobatar_gpui::gpui::{
-    Context, Entity, EventEmitter, KeyDownEvent, Render, Window, div, prelude::*, px, rgb,
+    Context, ElementId, Entity, EventEmitter, KeyDownEvent, Render, SharedString, Window, div,
+    prelude::*, px, rgb,
 };
 
 #[derive(Clone, Debug)]
 pub struct Agent {
+    pub id: String,
     pub name: String,
     pub title: Option<String>,
     pub state: PresenceState,
@@ -19,7 +21,7 @@ pub struct AgentList {
     pub label: String,
     agents: Vec<Agent>,
     avatars: Vec<Entity<PresenceAvatar>>,
-    active: Option<String>,
+    active_id: Option<String>,
     options: Options,
 }
 
@@ -31,7 +33,7 @@ impl AgentList {
             label: "エージェント / Agents".into(),
             agents: Vec::new(),
             avatars: Vec::new(),
-            active: None,
+            active_id: None,
             options,
         };
         list.set_agents(agents, cx);
@@ -48,18 +50,14 @@ impl AgentList {
                 })
             })
             .collect();
-        if !agents
-            .iter()
-            .any(|agent| Some(&agent.name) == self.active.as_ref())
-        {
-            self.active = None;
-        }
+        self.active_id = retained_selection(&agents, self.active_id.as_deref());
         self.agents = agents;
         cx.notify();
     }
 
-    pub fn select(&mut self, name: Option<String>, cx: &mut Context<Self>) {
-        self.active = name.filter(|name| self.agents.iter().any(|agent| &agent.name == name));
+    /// Selects an agent by its stable public ID.
+    pub fn select(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        self.active_id = retained_selection(&self.agents, id.as_deref());
         cx.notify();
     }
 
@@ -71,8 +69,10 @@ impl AgentList {
     }
 
     fn activate(&mut self, index: usize, cx: &mut Context<Self>) {
-        let agent = self.agents[index].clone();
-        self.active = Some(agent.name.clone());
+        let Some(agent) = activated_agent(&self.agents, index) else {
+            return;
+        };
+        self.active_id = Some(agent.id.clone());
         cx.emit(AgentSelected(agent));
         cx.notify();
     }
@@ -102,9 +102,9 @@ impl Render for AgentList {
                 view.child(div().p_4().text_sm().child("エージェントなし / No agents"))
             })
             .children(self.agents.iter().enumerate().map(|(index, agent)| {
-                let selected = self.active.as_deref() == Some(&agent.name);
+                let selected = is_active_agent(agent, self.active_id.as_deref());
                 div()
-                    .id(index)
+                    .id(ElementId::from(SharedString::from(agent.id.clone())))
                     .focusable()
                     .tab_stop(true)
                     .min_h(px(68.0))
@@ -154,5 +154,65 @@ impl Render for AgentList {
                         }
                     }))
             }))
+    }
+}
+
+fn retained_selection(agents: &[Agent], selected_id: Option<&str>) -> Option<String> {
+    selected_id
+        .filter(|id| agents.iter().any(|agent| agent.id == *id))
+        .map(str::to_owned)
+}
+
+fn is_active_agent(agent: &Agent, selected_id: Option<&str>) -> bool {
+    selected_id == Some(agent.id.as_str())
+}
+
+fn activated_agent(agents: &[Agent], index: usize) -> Option<Agent> {
+    agents.get(index).cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent(id: &str, name: &str) -> Agent {
+        Agent {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            title: None,
+            state: PresenceState::Online,
+            status: None,
+            badge: None,
+        }
+    }
+
+    #[test]
+    fn duplicate_names_remain_independently_selectable_by_stable_id() {
+        let first = agent("agent-a", "same name");
+        let second = agent("agent-b", "same name");
+        let agents = vec![first.clone(), second.clone()];
+
+        let selected = retained_selection(&agents, Some("agent-b"));
+        assert_eq!(selected.as_deref(), Some("agent-b"));
+        assert!(!is_active_agent(&first, selected.as_deref()));
+        assert!(is_active_agent(&second, selected.as_deref()));
+        assert_eq!(activated_agent(&agents, 1).unwrap().id, "agent-b");
+    }
+
+    #[test]
+    fn selection_survives_reordering_and_rename_but_clears_when_removed() {
+        let first = agent("agent-a", "same name");
+        let second = agent("agent-b", "same name");
+        let selected = retained_selection(&[first.clone(), second.clone()], Some("agent-b"));
+
+        let reordered = vec![second.clone(), first];
+        let selected = retained_selection(&reordered, selected.as_deref());
+        assert_eq!(selected.as_deref(), Some("agent-b"));
+
+        let renamed = agent("agent-b", "renamed");
+        let selected = retained_selection(&[renamed], selected.as_deref());
+        assert_eq!(selected.as_deref(), Some("agent-b"));
+
+        assert_eq!(retained_selection(&[], selected.as_deref()), None);
     }
 }

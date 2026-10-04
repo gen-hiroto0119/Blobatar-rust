@@ -5,7 +5,7 @@ native GPUI on macOS. This repository is under active development, **not a
 complete port**. Runtime components must not depend on JavaScript, a WebView,
 or an upstream service.
 
-## Generation 2 editor
+## Generation 1 / 2 editor
 
 Open **エディターを開く / Open editor** in the demo, or run:
 
@@ -14,7 +14,7 @@ cargo run -p blobatar-demo -- --editor
 ```
 
 The editor keeps the existing motion/gaze demo separate. It provides the pinned
-25-axis control set, shape/tone candidate sets, lock/unlock, name shuffle, reset,
+25-axis control set, generation-specific shape/tone candidate sets, lock/unlock, name shuffle, reset,
 neutral-layout eye-fit readback, seven-name crowd, backgrounds, expressions and
 motion modes. All-selected **retains the candidate array** (uniform candidate
 selection); Auto removes the override (the original weighted distribution).
@@ -32,8 +32,11 @@ background is selected. Save dialogs can be cancelled. Export writes a temporary
 file in the destination directory and atomically replaces the chosen file only
 after writing succeeds. Settings JSON is versioned and restores all Generation 2
 options, expressions, candidate arrays, motion and manual reduced motion.
-Unsupported generations/schemas and invalid JSON are rejected without replacing
-the current editor state. Generation 1 settings will be added with that renderer.
+Both generations can be previewed, saved and restored. Generation 1 uses its
+frozen six-shape layout rather than Generation 2 thresholds; expression and motion
+controls apply to that layout. Switching generation preserves numeric overrides
+(the same shape value can select a different silhouette). Unsupported generations,
+schemas and invalid JSON are rejected without replacing the current editor state.
 
 Code generation supports **Rust/GPUI only**, as requested. The editor displays
 one Rust snippet and a **Rustコードをコピー / Copy Rust code** button, without
@@ -43,7 +46,11 @@ context (see the generator example). SVG/PNG/settings exports and the standalone
 avatar HTTP API are separate from code generation and remain in scope.
 Runtime rendering, export and snippet generation use Rust only.
 
-Frozen editor tests cover 10,624 picker transitions and 315 readback states.
+Frozen editor tests cover 10,624 picker transitions and 270 historical
+nonempty-name readback states. The 45 pinned empty-name readback records remain
+unchanged but are excluded from readback equality for the intentional
+`blobatar`-seed improvement; a focused test compares empty and literal
+`blobatar` names in both generations.
 The fixture retains 720 historical upstream web snippets as reference data;
 those formats are no longer generated or tested as supported outputs. Rust
 snippet tests check preview parity and name/motion/reduced-motion preservation.
@@ -65,8 +72,9 @@ Open **再利用部品を開く / Open components** in the original demo, or run
 - `ProfileAvatar`: optional image with a deterministic missing/failed-image fallback.
 - `PresenceAvatar`: online/away/offline/thinking, expression transition and unread
   badges (zero hidden, counts above 99 shown as `99+`).
-- `AgentList`: caller-provided agents, working count, selected name and
-  `AgentSelected` events; click or Enter/Space selects a row.
+- `AgentList`: caller-provided agents with unique stable IDs, working count,
+  ID-based selection and `AgentSelected` events; click or Enter/Space selects a
+  row. Selection survives reorder and rename while its ID remains present.
 - `UserTable`: caller-provided rows, ID-based static avatars and a bounded drawing
   cache. GPUI's uniform list renders visible rows; the gallery supplies 10,000
   sample users. Rename changes the display name without changing the avatar seed.
@@ -120,8 +128,11 @@ otherwise they return plain text.
 `Avatar::new` remains generation 2. The public
 `Avatar::with_generation(name, &options, Generation::One)` factory selects the
 separately frozen Generation 1 layout. Generation 1 settings in the editor and
-the native/SQLite wall remain pending; the HTTP API and Generation 1 core do
-not implement those features.
+exports are supported. An empty editor name consistently uses the `blobatar`
+seed for preview, readback, export and snippets; this intentionally improves
+the upstream editor's empty-name readback behavior. The SQLite wall backend
+and optional server routes are implemented; standalone remote writes remain
+disabled by default. A GPUI wall client is separate.
 
 ## Compatibility baseline
 
@@ -203,7 +214,7 @@ above.
 | C | GPUI vector component and macOS static image comparison | Ten shapes, fourteen static expressions and the 400-avatar size/background/surface matrix compared on macOS; see [comparison notes](docs/render-matrix.md) |
 | D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; gaze adapter wired, native gaze/hover verification pending |
 | E | Editor, exports/settings, reusable showcase components | Generation 2 editor, exports/settings and six reusable native views implemented; native interaction acceptance pending |
-| F | Generation 1 core and avatar HTTP API; SQLite wall/API/native wall | Generation 1 core and frozen avatar HTTP API verified; wall and Generation 1 settings pending |
+| F | Generation 1 core/editor/exports, avatar HTTP API and SQLite wall backend/API | Generation 1 core/editor/exports and frozen avatar HTTP API verified; SQLite wall backend/routes implemented |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
 
 Static SVG output is an intermediate milestone, not the desktop demo or final

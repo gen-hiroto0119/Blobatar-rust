@@ -83,6 +83,9 @@ fn editor_readback_and_locks_match_upstream() {
             .unwrap(),
             case["applicable"]
         );
+        if case["name"].as_str() == Some("") {
+            continue;
+        }
         let ghosts = state.fit_readback();
         assert_eq!(
             ghosts.len(),
@@ -100,6 +103,39 @@ fn editor_readback_and_locks_match_upstream() {
                 _ => panic!("pin must be scalar"),
             }
         }
+    }
+}
+
+#[test]
+fn empty_name_uses_blobatar_reader_in_both_generations() {
+    for generation in [1, 2] {
+        let mut empty = EditorState::default();
+        empty.settings.generation = generation;
+        empty.settings.name.clear();
+        let mut named = empty.clone();
+        named.settings.name = "blobatar".into();
+
+        for axis in AXES {
+            assert_eq!(
+                empty.reader().get(axis.key),
+                named.reader().get(axis.key),
+                "generation {generation}, {}",
+                axis.key
+            );
+            empty.toggle_lock(axis.key);
+            named.toggle_lock(axis.key);
+        }
+        assert_eq!(
+            serde_json::to_value(&empty.settings.options.traits).unwrap(),
+            serde_json::to_value(&named.settings.options.traits).unwrap()
+        );
+        assert_eq!(empty.fit_readback(), named.fit_readback());
+        assert_eq!(
+            empty.avatar().svg(&empty.settings.options),
+            named.avatar().svg(&named.settings.options)
+        );
+        assert_eq!(empty.settings.svg().unwrap(), named.settings.svg().unwrap());
+        assert_eq!(snippet::snippet(&empty), snippet::snippet(&named));
     }
 }
 
@@ -169,7 +205,7 @@ fn rust_snippet_preserves_name_and_playback_settings() {
                 state.settings.reduced_motion = reduced;
                 let code = snippet::snippet(&state);
                 assert!(code.contains(&format!(
-                    "AnimatedBlobatar::new({:?}, &options)",
+                    "AnimatedBlobatar::with_generation({:?}, &options, Generation::Two)",
                     state.seed()
                 )));
                 assert!(code.contains(&format!("set_animate(Animate::{mode}, cx)")));
@@ -177,4 +213,38 @@ fn rust_snippet_preserves_name_and_playback_settings() {
             }
         }
     }
+}
+
+#[test]
+fn generation_one_picker_preview_and_snippet_use_the_legacy_shapes() {
+    let mut state = EditorState::default();
+    state.settings.generation = 1;
+    assert_eq!(state.shape_choices().len(), 6);
+    for choice in state.shape_choices() {
+        state.pin("shape", choice.at);
+        assert_eq!(state.avatar().layout.shape, choice.name);
+        assert_eq!(state.neutral_layout().shape, choice.name);
+    }
+    state.pin("shape", 0.65);
+    assert_eq!(state.avatar().layout.shape, "boxy");
+    assert!(
+        !state
+            .applicable_axes()
+            .iter()
+            .any(|axis| axis.key == "capsule.squat")
+    );
+    let code = snippet::snippet(&state);
+    assert!(code.contains("Generation::One"));
+    assert_eq!(
+        state.settings.svg().unwrap(),
+        state.avatar().svg(&state.settings.options)
+    );
+    state.settings.generation = 2;
+    assert_eq!(state.avatar().layout.shape, "capsule");
+    assert!(
+        state
+            .applicable_axes()
+            .iter()
+            .any(|axis| axis.key == "capsule.squat")
+    );
 }

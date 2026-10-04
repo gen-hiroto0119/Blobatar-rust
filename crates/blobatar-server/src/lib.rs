@@ -1,14 +1,19 @@
 mod error;
 mod parse;
+pub mod wall_adapter;
 
 use axum::{
     Router,
     body::Body,
+    extract::connect_info::ConnectInfo,
     http::{Method, Request, Response, StatusCode, header, uri::Authority},
 };
 use blobatar_core::Avatar;
 use error::ApiError;
+use std::net::SocketAddr;
 use url::Url;
+
+pub use wall_adapter::{VerifyError, WallAuthContext, WallService, WallVerifier};
 
 const USAGE: &str = include_str!("reference/usage.txt");
 const OPENAPI: &str = include_str!("reference/openapi.json");
@@ -18,25 +23,16 @@ pub fn router() -> Router {
     Router::new().fallback(handle)
 }
 
+pub fn router_with_wall(service: WallService) -> Router {
+    Router::new().fallback(move |request: Request<Body>| async move {
+        handle_with_wall(request, service.clone()).await
+    })
+}
+
 async fn handle(request: Request<Body>) -> Response<Body> {
     let method = request.method().clone();
     let mut response = match request_url(&request) {
-        Ok(url) => {
-            let path = url.path();
-            if path == "/openapi.json" {
-                openapi_response(&url.origin().ascii_serialization())
-            } else if path == "/" {
-                help_response()
-            } else if let Some(raw_name) = path.strip_prefix("/avatar/") {
-                match avatar_response(&request, &method, &url, raw_name) {
-                    Ok(response) => response,
-                    Err(error) => error::response(&error, request.headers(), USAGE),
-                }
-            } else {
-                let error = ApiError::not_found(path);
-                error::response(&error, request.headers(), USAGE)
-            }
-        }
+        Ok(url) => avatar_route(request, method.clone(), url),
         Err(error) => error::response(&error, request.headers(), USAGE),
     };
 
@@ -47,6 +43,42 @@ async fn handle(request: Request<Body>) -> Response<Body> {
     response
 }
 
+async fn handle_with_wall(request: Request<Body>, service: WallService) -> Response<Body> {
+    let method = request.method().clone();
+    let mut response = match request_url(&request) {
+        Ok(url) if url.path().starts_with("/wall/") => {
+            let peer = request
+                .extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|info| info.0);
+            service.handle(request, &url, peer).await
+        }
+        Ok(url) => avatar_route(request, method.clone(), url),
+        Err(error) => error::response(&error, request.headers(), USAGE),
+    };
+    if method == Method::HEAD {
+        let (parts, _) = response.into_parts();
+        response = Response::from_parts(parts, Body::empty());
+    }
+    response
+}
+
+fn avatar_route(request: Request<Body>, method: Method, url: Url) -> Response<Body> {
+    let path = url.path();
+    if path == "/openapi.json" {
+        openapi_response(&url.origin().ascii_serialization())
+    } else if path == "/" {
+        help_response()
+    } else if let Some(raw_name) = path.strip_prefix("/avatar/") {
+        match avatar_response(&request, &method, &url, raw_name) {
+            Ok(response) => response,
+            Err(error) => error::response(&error, request.headers(), USAGE),
+        }
+    } else {
+        let error = ApiError::not_found(path);
+        error::response(&error, request.headers(), USAGE)
+    }
+}
 fn avatar_response(
     request: &Request<Body>,
     method: &Method,

@@ -51,7 +51,7 @@ impl Components {
         .collect();
         let agents = cx.new(|cx| AgentList::new(sample_agents(), options.clone(), cx));
         let selection = cx.subscribe(&agents, |this, _, selected: &AgentSelected, cx| {
-            this.status = format!("選択 / Selected: {}", selected.0.name);
+            this.status = format!("選択 / Selected: {} ({})", selected.0.id, selected.0.name);
             cx.notify();
         });
         let users = cx.new(|_| UserTable::new(sample_users(10_000), options.clone()));
@@ -184,12 +184,21 @@ impl Render for Components {
 fn sample_agents() -> Vec<Agent> {
     [
         (
+            "researcher-primary",
             "researcher",
             "Research",
             PresenceState::Thinking,
             "資料を比較中 / Comparing sources",
         ),
         (
+            "researcher-secondary",
+            "researcher",
+            "Research (second)",
+            PresenceState::Online,
+            "別のエージェント / A distinct agent",
+        ),
+        (
+            "builder",
             "builder",
             "Builder",
             PresenceState::Online,
@@ -197,13 +206,15 @@ fn sample_agents() -> Vec<Agent> {
         ),
         (
             "reviewer",
+            "reviewer",
             "Reviewer",
             PresenceState::Away,
             "レビュー待ち / Waiting for review",
         ),
     ]
     .into_iter()
-    .map(|(name, title, state, status)| Agent {
+    .map(|(id, name, title, state, status)| Agent {
+        id: id.into(),
         name: name.into(),
         title: Some(title.into()),
         state,

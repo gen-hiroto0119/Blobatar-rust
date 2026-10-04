@@ -4,7 +4,8 @@ use std::{
 };
 
 use blobatar_core::{
-    Avatar, Expression, Options, color::Palette, geometry::Bounds as FaceBounds, traits::Traits,
+    Avatar, Expression, Generation, Options, color::Palette, geometry::Bounds as FaceBounds,
+    traits::Traits,
 };
 use blobatar_motion::{
     clock::{PlaybackClock, PlaybackRate},
@@ -64,10 +65,14 @@ pub struct AnimatedBlobatar {
 
 impl AnimatedBlobatar {
     pub fn new(name: &str, options: &Options) -> Self {
+        Self::with_generation(name, options, Generation::Two)
+    }
+
+    pub fn with_generation(name: &str, options: &Options, generation: Generation) -> Self {
         let expression = options.expression.unwrap_or_default();
         let mut neutral = options.clone();
         neutral.expression = None;
-        let avatar = Avatar::new(name, &neutral);
+        let avatar = Avatar::with_generation(name, &neutral, generation);
         let drawing = Arc::new(Drawing::new(&avatar, &neutral));
         let traits = Traits::new(name, options.normalize, &options.traits);
         let seeds = IdleSeeds::new(&traits);
@@ -448,6 +453,25 @@ fn rgb([r, g, b]: [u8; 3]) -> gpui::Rgba {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generation_one_animation_retains_the_legacy_neutral_geometry() {
+        let mut options = Options::default();
+        options
+            .traits
+            .insert("shape".into(), blobatar_core::traits::Override::Fixed(0.65));
+        options.expression = Some(Expression::Thinking);
+        let view = AnimatedBlobatar::with_generation("legacy", &options, Generation::One);
+        assert_eq!(view.avatar.layout.shape, "boxy");
+        assert_eq!(view.expression, Expression::Thinking);
+        assert_eq!(
+            AnimatedBlobatar::new("legacy", &options)
+                .avatar
+                .layout
+                .shape,
+            "capsule"
+        );
+    }
 
     #[test]
     fn animation_requests_obey_visibility_and_motion_preferences() {

@@ -22,8 +22,12 @@ pub fn snippet(state: &EditorState) -> String {
         Motion::Hover => "Hover",
         Motion::Always => "Always",
     };
+    let generation = match state.settings.generation() {
+        blobatar_core::Generation::One => "One",
+        blobatar_core::Generation::Two => "Two",
+    };
     format!(
-        "use blobatar_core::Options;\nuse blobatar_gpui::{{Animate, AnimatedBlobatar}};\n\nlet options: Options = serde_json::from_str({options_literal})?;\nlet avatar = cx.new(|cx| {{\n    let mut avatar = AnimatedBlobatar::new({:?}, &options).size(192.0);\n    avatar.set_animate(Animate::{motion}, cx);\n    avatar.set_reduced_motion({}, cx);\n    avatar\n}});",
+        "use blobatar_core::{{Generation, Options}};\nuse blobatar_gpui::{{Animate, AnimatedBlobatar}};\n\nlet options: Options = serde_json::from_str({options_literal})?;\nlet avatar = cx.new(|cx| {{\n    let mut avatar = AnimatedBlobatar::with_generation({:?}, &options, Generation::{generation}).size(192.0);\n    avatar.set_animate(Animate::{motion}, cx);\n    avatar.set_reduced_motion({}, cx);\n    avatar\n}});",
         state.seed(),
         state.settings.reduced_motion
     )
