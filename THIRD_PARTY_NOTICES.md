@@ -19,6 +19,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR OTHER DEALINGS IN THE SOFTWARE.
 
+## Rust code highlighting
+
+`rustc_lexer 0.1.0` by The Rust Project Developers supplies Rust tokenization
+for the native code preview. It is licensed under MIT or Apache-2.0 and comes
+from [rust-lang/rust](https://github.com/rust-lang/rust/). It is used only for
+presentation; generated source and clipboard data are not rewritten.
+
 ## GPUI text input
 
 `crates/blobatar-ui/src/text_input.rs` adapts the GPUI 0.2.2

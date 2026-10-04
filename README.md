@@ -45,6 +45,9 @@ the full configuration. The snippet belongs in a fallible function with a GPUI
 context (see the generator example). SVG/PNG/settings exports and the standalone
 avatar HTTP API are separate from code generation and remain in scope.
 Runtime rendering, export and snippet generation use Rust only.
+The native code panel uses monospace Rust syntax highlighting for keywords,
+strings (including raw JSON literals), comments, types, calls and numbers.
+Highlighting changes presentation only; Copy still copies the original plain Rust.
 
 Frozen editor tests cover 10,624 picker transitions and 270 historical
 nonempty-name readback states. The 45 pinned empty-name readback records remain

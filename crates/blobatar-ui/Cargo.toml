@@ -11,5 +11,6 @@ blobatar-gpui = { path = "../blobatar-gpui" }
 blobatar-wall = { path = "../blobatar-wall" }
 unicode-segmentation = "1.12"
 rand = "0.8"
+rustc_lexer = "=0.1.0"
 serde.workspace = true
 serde_json.workspace = true

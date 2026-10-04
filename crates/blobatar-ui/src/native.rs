@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::Read,
+    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -10,9 +11,9 @@ use blobatar_export::{Motion, Settings, save_atomic};
 use blobatar_gpui::{
     Animate, AnimatedBlobatar, Blobatar, Drawing,
     gpui::{
-        self, AnyElement, Bounds, ClipboardItem, Context, Entity, KeyDownEvent, MouseButton,
-        MouseDownEvent, MouseMoveEvent, Pixels, Render, SharedString, Subscription, Window, canvas,
-        div, prelude::*, px, relative, rgb,
+        self, AnyElement, Bounds, ClipboardItem, Context, Entity, HighlightStyle, KeyDownEvent,
+        MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Render, SharedString, StyledText,
+        Subscription, Window, canvas, div, prelude::*, px, relative, rgb,
     },
 };
 use rand::Rng;
@@ -20,6 +21,7 @@ use rand::Rng;
 use crate::{
     advanced_json::AdvancedJsonDraft,
     axes::{self, Axis, Choice, Group, Kind, TONES},
+    code_highlight::rust_highlights,
     editor::EditorState,
     snippet,
     text_input::TextInput,
@@ -46,6 +48,7 @@ pub struct Editor {
     axis_bounds: BTreeMap<&'static str, Bounds<Pixels>>,
     dragging: Option<&'static Axis>,
     code: String,
+    code_highlights: Vec<(Range<usize>, HighlightStyle)>,
     status: String,
     busy: bool,
 }
@@ -78,6 +81,7 @@ impl Editor {
             axis_bounds: BTreeMap::new(),
             dragging: None,
             code: String::new(),
+            code_highlights: Vec::new(),
             status: String::new(),
             busy: false,
         };
@@ -133,6 +137,7 @@ impl Editor {
             .collect();
         self.fit = self.state.fit_readback();
         self.code = snippet::snippet(&self.state);
+        self.code_highlights = rust_highlights(&self.code);
         let traits =
             serde_json::to_string(&self.state.settings.options.traits).expect("valid traits");
         let advanced = self.advanced.clone();
@@ -547,8 +552,17 @@ impl Editor {
                     .p_3()
                     .rounded_md()
                     .bg(rgb(0x151b26))
+                    .font_family(if cfg!(target_os = "macos") {
+                        "Menlo"
+                    } else {
+                        "DejaVu Sans Mono"
+                    })
+                    .text_color(rgb(0xe6edf5))
                     .text_xs()
-                    .child(self.code.clone()),
+                    .child(
+                        StyledText::new(self.code.clone())
+                            .with_highlights(self.code_highlights.clone()),
+                    ),
             )
     }
 

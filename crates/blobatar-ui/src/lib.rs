@@ -1,5 +1,6 @@
 mod advanced_json;
 pub mod axes;
+mod code_highlight;
 pub mod components;
 pub mod editor;
 pub mod native;
