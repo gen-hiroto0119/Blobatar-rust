@@ -172,18 +172,10 @@ impl Editor {
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> AnyElement {
         let style = style.into();
-        let action = Arc::new(action);
-        let key_action = action.clone();
         theme::button(id, label, self.appearance, style)
             .on_click(cx.listener(move |this, _, window, cx| {
                 if !style.disabled {
                     action(this, window, cx);
-                }
-            }))
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                if !style.disabled && matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                    key_action(this, window, cx);
-                    cx.stop_propagation();
                 }
             }))
             .into_any_element()
