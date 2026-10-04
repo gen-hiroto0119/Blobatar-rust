@@ -1,0 +1,20 @@
+[package]
+name = "blobatar-gpui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+blobatar-core = { path = "../blobatar-core" }
+blobatar-motion = { path = "../blobatar-motion" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+async-channel = "=2.5.0"
+block2 = "=0.6.2"
+objc2 = "=0.6.4"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSNotification", "NSOperation", "NSString", "NSObject", "block2"] }
+gpui = { version = "=0.2.2", default-features = false, features = ["font-kit", "runtime_shaders", "macos-blade"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+gpui = { version = "=0.2.2", default-features = false, features = ["font-kit", "x11"] }

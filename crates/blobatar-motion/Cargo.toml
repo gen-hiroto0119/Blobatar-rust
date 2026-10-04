@@ -1,0 +1,12 @@
+[package]
+name = "blobatar-motion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+blobatar-core = { path = "../blobatar-core" }
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

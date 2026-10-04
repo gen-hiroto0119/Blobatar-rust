@@ -1,0 +1,514 @@
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use blobatar_core::{
+    Avatar, Expression, Generation, Options, color::Palette, geometry::Bounds as FaceBounds,
+    traits::Traits,
+};
+use blobatar_motion::{
+    clock::{PlaybackClock, PlaybackRate},
+    driver::{GazeDriver, Target},
+    ease,
+    gaze::Mark,
+    idle::{IdleSeeds, idle_at},
+    morph::{Fill, Morph},
+    survey::{self, Face},
+    transform::{Affine, frame_transforms_with_gaze},
+};
+use gpui::{
+    Bounds, Context, DispatchPhase, IntoElement, MouseExitEvent, MouseMoveEvent, Pixels, Render,
+    Subscription, Window, div, prelude::*,
+};
+
+use crate::{
+    Blobatar, Drawing, PaintFrame, parse_color,
+    system_motion::{self, SystemMotion},
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Animate {
+    Never,
+    Hover,
+    Always,
+}
+
+/// Retains neutral geometry, palette endpoints, and the interrupted morph.
+pub struct AnimatedBlobatar {
+    avatar: Avatar,
+    drawing: Arc<Drawing>,
+    still_drawing: Arc<Drawing>,
+    options: Options,
+    seeds: IdleSeeds,
+    morph: Morph,
+    expression: Expression,
+    epoch: Instant,
+    clock: PlaybackClock,
+    size: f32,
+    mode: Animate,
+    reduced_motion: bool,
+    system_reduced_motion: bool,
+    motion_subscription: Option<Subscription>,
+    visible: bool,
+    hovered: bool,
+    amplitude_from: f64,
+    amplitude_to: f64,
+    amplitude_start_ms: f64,
+    lift_from: f64,
+    lift_start_ms: f64,
+    face: Face,
+    viewport: FaceBounds,
+    gaze: Option<GazeDriver>,
+    gaze_travel: f64,
+}
+
+impl AnimatedBlobatar {
+    pub fn new(name: &str, options: &Options) -> Self {
+        Self::with_generation(name, options, Generation::Two)
+    }
+
+    pub fn with_generation(name: &str, options: &Options, generation: Generation) -> Self {
+        let expression = options.expression.unwrap_or_default();
+        let mut neutral = options.clone();
+        neutral.expression = None;
+        let avatar = Avatar::with_generation(name, &neutral, generation);
+        let drawing = Arc::new(Drawing::new(&avatar, &neutral));
+        let traits = Traits::new(name, options.normalize, &options.traits);
+        let seeds = IdleSeeds::new(&traits);
+        let morph = Morph::new(expression, fill(&expression.palette(&avatar.palette)));
+        let still_drawing = posed_drawing(&avatar, options, expression);
+        let face = survey::survey(&avatar.layout).unwrap_or(Face {
+            marks: Vec::new(),
+            rx: 50.0,
+            ry: 50.0,
+        });
+        let viewport = FaceBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        };
+        let gaze = Some(GazeDriver::new(face.clone(), viewport, 0.0));
+        Self {
+            avatar,
+            drawing,
+            still_drawing,
+            options: options.clone(),
+            seeds,
+            morph,
+            expression,
+            epoch: Instant::now(),
+            clock: PlaybackClock::default(),
+            size: options.size.unwrap_or(64.0) as f32,
+            mode: Animate::Hover,
+            reduced_motion: false,
+            system_reduced_motion: false,
+            motion_subscription: None,
+            visible: false,
+            hovered: false,
+            amplitude_from: 0.0,
+            amplitude_to: 0.0,
+            amplitude_start_ms: -400.0,
+            lift_from: 0.0,
+            lift_start_ms: -220.0,
+            face,
+            viewport,
+            gaze,
+            gaze_travel: 0.0,
+        }
+    }
+
+    pub fn size(mut self, size: f32) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Full excursion in the 100-unit viewBox; zero by default, like gaze.css.
+    pub fn gaze_travel(mut self, travel: f64) -> Self {
+        self.gaze_travel = travel;
+        if let Some(gaze) = &mut self.gaze {
+            gaze.remeasure(self.viewport, travel, None);
+        }
+        self
+    }
+
+    /// Installs a fresh controller if a previous one was stopped.
+    pub fn look_at(&mut self, target: Target, cx: &mut Context<Self>) {
+        let gaze = self.gaze.get_or_insert_with(|| {
+            GazeDriver::new(self.face.clone(), self.viewport, self.gaze_travel)
+        });
+        gaze.look_at(target);
+        cx.notify();
+    }
+
+    /// Hosts supply changed element bounds, or zero bounds when detached.
+    pub fn remeasure_gaze_target(&mut self, bounds: FaceBounds, cx: &mut Context<Self>) {
+        if let Some(gaze) = &mut self.gaze {
+            gaze.remeasure(self.viewport, self.gaze_travel, Some(bounds));
+            cx.notify();
+        }
+    }
+
+    pub fn stop_gaze(&mut self, cx: &mut Context<Self>) {
+        self.gaze = None;
+        cx.notify();
+    }
+
+    pub fn set_expression(&mut self, expression: Expression, cx: &mut Context<Self>) {
+        if self.expression == expression {
+            return;
+        }
+        self.expression = expression;
+        self.still_drawing = posed_drawing(&self.avatar, &self.options, expression);
+        self.morph.set_expression(
+            expression,
+            fill(&expression.palette(&self.avatar.palette)),
+            self.now(),
+        );
+        if self.motion_disabled() {
+            self.morph.finish();
+        }
+        cx.notify();
+    }
+
+    pub fn set_animate(&mut self, mode: Animate, cx: &mut Context<Self>) {
+        let now = self.now();
+        self.amplitude_from = self.amplitude(now);
+        self.mode = mode;
+        self.amplitude_to = if mode == Animate::Always || (mode == Animate::Hover && self.hovered) {
+            1.0
+        } else {
+            0.0
+        };
+        self.amplitude_start_ms = now;
+        if self.motion_disabled() {
+            self.morph.finish();
+        }
+        cx.notify();
+    }
+
+    pub fn set_reduced_motion(&mut self, reduced: bool, cx: &mut Context<Self>) {
+        self.reduced_motion = reduced;
+        if self.motion_disabled() {
+            self.morph.finish();
+        }
+        cx.notify();
+    }
+
+    pub fn set_paused(&mut self, paused: bool, cx: &mut Context<Self>) {
+        let wall = self.epoch.elapsed();
+        let now = self.clock.at(wall);
+        if paused
+            && !self.clock.is_paused()
+            && !self.motion_disabled()
+            && let Some(gaze) = &mut self.gaze
+        {
+            gaze.tick(now);
+        }
+        self.clock.set_paused(paused, wall);
+        cx.notify();
+    }
+
+    pub fn set_playback_rate(&mut self, rate: PlaybackRate, cx: &mut Context<Self>) {
+        self.clock.set_rate(rate, self.epoch.elapsed());
+        cx.notify();
+    }
+
+    /// Pauses at an idle time with expression/hover settled and gaze reset.
+    /// Pursuit history is not rewindable; replay input events to inspect it.
+    pub fn seek_idle(&mut self, time: Duration, cx: &mut Context<Self>) {
+        let wall = self.epoch.elapsed();
+        self.clock.seek(time, wall);
+        self.clock.set_paused(true, wall);
+        self.morph.finish();
+        self.amplitude_from = self.amplitude_to;
+        self.amplitude_start_ms = self.clock.at(wall);
+        self.lift_from = if self.hovered { 1.0 } else { 0.0 };
+        self.lift_start_ms = self.clock.at(wall) - self.lift_duration();
+        if let Some(gaze) = &mut self.gaze {
+            let enabled = gaze.is_enabled();
+            gaze.set_enabled(false);
+            gaze.set_enabled(enabled);
+        }
+        cx.notify();
+    }
+
+    fn now(&self) -> f64 {
+        self.clock.at(self.epoch.elapsed())
+    }
+
+    fn motion_disabled(&self) -> bool {
+        self.reduced_motion || self.system_reduced_motion || self.mode == Animate::Never
+    }
+
+    fn needs_frame(&self, now: f64, pose: blobatar_core::Pose, amplitude: f64) -> bool {
+        self.visible
+            && !self.motion_disabled()
+            && !self.clock.is_paused()
+            && (amplitude > 0.0
+                || self.amplitude_to > 0.0
+                || pose.shake != 0.0
+                || pose.rock != 0.0
+                || self.morph.is_running(now)
+                || now < self.lift_start_ms + self.lift_duration()
+                || self.gaze.as_ref().is_some_and(GazeDriver::needs_frame))
+    }
+
+    fn amplitude(&self, now: f64) -> f64 {
+        let progress = ease::ease_out(((now - self.amplitude_start_ms) / 400.0).clamp(0.0, 1.0));
+        self.amplitude_from + (self.amplitude_to - self.amplitude_from) * progress
+    }
+
+    fn lift(&self, now: f64) -> f64 {
+        let duration = self.lift_duration();
+        let progress = ease::bezier(
+            ((now - self.lift_start_ms) / duration).clamp(0.0, 1.0),
+            [0.23, 1.0, 0.32, 1.0],
+        );
+        let target = if self.hovered { 1.0 } else { 0.0 };
+        self.lift_from + (target - self.lift_from) * progress
+    }
+
+    fn lift_duration(&self) -> f64 {
+        if self.hovered { 220.0 } else { 160.0 }
+    }
+
+    fn hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
+        let now = self.now();
+        self.lift_from = self.lift(now);
+        self.lift_start_ms = now;
+        self.amplitude_from = self.amplitude(now);
+        self.amplitude_start_ms = now;
+        self.hovered = hovered;
+        self.amplitude_to =
+            if self.mode == Animate::Always || (self.mode == Animate::Hover && hovered) {
+                1.0
+            } else {
+                0.0
+            };
+        cx.notify();
+    }
+}
+
+impl AnimatedBlobatar {
+    fn paint_frame(&mut self, bounds: Bounds<Pixels>, window: &mut Window) -> Option<PaintFrame> {
+        let now = self.now();
+        let still = self.motion_disabled();
+        self.visible = bounds.intersects(&window.content_mask().bounds);
+        let viewport = FaceBounds {
+            x: f64::from(f32::from(bounds.origin.x)),
+            y: f64::from(f32::from(bounds.origin.y)),
+            width: f64::from(f32::from(bounds.size.width)),
+            height: f64::from(f32::from(bounds.size.height)),
+        };
+        if let Some(gaze) = &mut self.gaze {
+            if self.viewport != viewport {
+                gaze.remeasure(viewport, self.gaze_travel, None);
+            }
+            gaze.set_enabled(!still);
+            if self.visible && !self.clock.is_paused() {
+                gaze.tick(now);
+            }
+        }
+        self.viewport = viewport;
+        if still || !self.visible {
+            return None;
+        }
+        let gaze = self.gaze.as_ref().map(GazeDriver::frame);
+        let shown = self.morph.sample(now);
+        let amplitude = self.amplitude(now);
+        let idle = idle_at(
+            self.seeds
+                .with_gaze_hold(gaze.map_or(0.0, |frame| frame.hold)),
+            now,
+            amplitude,
+            shown.pose.shake,
+        );
+        let lift = self.lift(now);
+        let hover = Affine::translate(50.0, 50.0 - 1.5 * lift)
+            .compose(Affine::scale(1.0 + 0.04 * lift, 1.0 + 0.04 * lift))
+            .compose(Affine::translate(-50.0, -50.0));
+        let transforms = frame_transforms_with_gaze(
+            &self.avatar.layout,
+            shown.pose,
+            idle,
+            hover,
+            gaze.map_or(&[], |frame| frame.eyes.as_slice()),
+        );
+        if self.needs_frame(now, shown.pose, amplitude) {
+            window.request_animation_frame();
+        }
+        Some(PaintFrame {
+            transforms,
+            head: rgb(shown.fill.head),
+            eye: rgb(shown.fill.eye),
+        })
+    }
+}
+
+impl Render for AnimatedBlobatar {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.motion_subscription.is_none() {
+            self.system_reduced_motion = system_motion::current(cx);
+            if self.motion_disabled() {
+                self.morph.finish();
+            }
+            self.motion_subscription = Some(cx.observe_global::<SystemMotion>(|this, cx| {
+                this.system_reduced_motion = cx.global::<SystemMotion>().reduced;
+                if this.motion_disabled() {
+                    this.morph.finish();
+                }
+                cx.notify();
+            }));
+        }
+        let still = self.motion_disabled();
+        let mut blobatar = Blobatar::from_drawing(if still {
+            self.still_drawing.clone()
+        } else {
+            self.drawing.clone()
+        })
+        .size(self.size);
+        let entity = cx.entity().downgrade();
+        blobatar.prepare = Some(Box::new(move |bounds, window, cx| {
+            entity
+                .update(cx, |this, _| this.paint_frame(bounds, window))
+                .ok()
+                .flatten()
+        }));
+        let entity = cx.entity().downgrade();
+        blobatar.listen = Some(Box::new(move |window, cx| {
+            let Some(view) = entity.upgrade() else {
+                return;
+            };
+            if !view
+                .read(cx)
+                .gaze
+                .as_ref()
+                .is_some_and(GazeDriver::is_enabled)
+            {
+                return;
+            }
+            let moved = entity.clone();
+            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                if phase == DispatchPhase::Capture {
+                    let _ = moved.update(cx, |this, cx| {
+                        if let Some(gaze) = &mut this.gaze {
+                            gaze.pointer_moved(Mark {
+                                x: f64::from(f32::from(event.position.x)),
+                                y: f64::from(f32::from(event.position.y)),
+                            });
+                            if this.visible {
+                                cx.notify();
+                            }
+                        }
+                    });
+                }
+            });
+            window.on_mouse_event(move |_: &MouseExitEvent, phase, _, cx| {
+                if phase == DispatchPhase::Capture {
+                    let _ = entity.update(cx, |this, cx| {
+                        if let Some(gaze) = &mut this.gaze {
+                            gaze.pointer_left();
+                            if this.visible {
+                                cx.notify();
+                            }
+                        }
+                    });
+                }
+            });
+        }));
+        div()
+            .id("animated-blobatar")
+            .child(blobatar)
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| this.hover(*hovered, cx)))
+    }
+}
+
+fn posed_drawing(avatar: &Avatar, options: &Options, expression: Expression) -> Arc<Drawing> {
+    let pose = expression.pose();
+    let posed = Avatar {
+        layout: blobatar_core::pose::bake(&avatar.layout, pose),
+        palette: expression.palette(&avatar.palette),
+        body_offset_y: pose.body_offset_y,
+    };
+    Arc::new(Drawing::new(&posed, options))
+}
+
+fn fill(palette: &Palette) -> Fill {
+    let bytes = |value: Option<&str>| {
+        let color = parse_color(value);
+        [color.r, color.g, color.b].map(|v| (v * 255.0).round() as u8)
+    };
+    Fill {
+        head: bytes(palette.head.as_deref()),
+        eye: bytes(palette.eye.as_deref()),
+    }
+}
+
+fn rgb([r, g, b]: [u8; 3]) -> gpui::Rgba {
+    gpui::rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generation_one_animation_retains_the_legacy_neutral_geometry() {
+        let mut options = Options::default();
+        options
+            .traits
+            .insert("shape".into(), blobatar_core::traits::Override::Fixed(0.65));
+        options.expression = Some(Expression::Thinking);
+        let view = AnimatedBlobatar::with_generation("legacy", &options, Generation::One);
+        assert_eq!(view.avatar.layout.shape, "boxy");
+        assert_eq!(view.expression, Expression::Thinking);
+        assert_eq!(
+            AnimatedBlobatar::new("legacy", &options)
+                .avatar
+                .layout
+                .shape,
+            "capsule"
+        );
+    }
+
+    #[test]
+    fn animation_requests_obey_visibility_and_motion_preferences() {
+        let mut view = AnimatedBlobatar::new("scheduler", &Options::default());
+        view.visible = true;
+        view.mode = Animate::Always;
+        view.amplitude_to = 1.0;
+        let pose = Expression::Thinking.pose();
+        assert!(view.needs_frame(1000.0, pose, 1.0));
+        view.clock.set_paused(true, Duration::ZERO);
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.clock.set_paused(false, Duration::ZERO);
+        view.visible = false;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.visible = true;
+        view.system_reduced_motion = true;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.system_reduced_motion = false;
+        view.reduced_motion = true;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+        view.reduced_motion = false;
+        view.mode = Animate::Never;
+        assert!(!view.needs_frame(1000.0, pose, 1.0));
+    }
+
+    #[test]
+    fn settled_gaze_and_completed_hover_exit_park_requests() {
+        let mut view = AnimatedBlobatar::new("scheduler", &Options::default());
+        view.visible = true;
+        view.gaze.as_mut().unwrap().look_at(Target::Rest);
+        assert!(view.needs_frame(1000.0, Expression::Idle.pose(), 0.0));
+        for frame in 0..240 {
+            view.gaze.as_mut().unwrap().tick(f64::from(frame) * 16.0);
+        }
+        assert!(!view.needs_frame(4000.0, Expression::Idle.pose(), 0.0));
+        view.lift_start_ms = 4000.0;
+        assert!(view.needs_frame(4159.0, Expression::Idle.pose(), 0.0));
+        assert!(!view.needs_frame(4160.0, Expression::Idle.pose(), 0.0));
+    }
+}

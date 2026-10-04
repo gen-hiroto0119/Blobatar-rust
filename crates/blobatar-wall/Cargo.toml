@@ -1,0 +1,16 @@
+[package]
+name = "blobatar-wall"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rand = "=0.8.8"
+rusqlite = { version = "=0.32.1", features = ["bundled"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "=0.10.9"
+subtle = "=2.6.1"
+unicode-normalization.workspace = true
+unicode-properties = "=0.1.4"
