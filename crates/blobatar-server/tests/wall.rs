@@ -1,11 +1,23 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    time::Duration,
+};
 
 use axum::{
     body::{Body, to_bytes},
     http::{Method, Request, StatusCode, header},
 };
 use blobatar_server::{VerifyError, WallAuthContext, WallService, WallVerifier, router_with_wall};
-use blobatar_wall::{SQLiteStore, WallStore};
+use blobatar_wall::{
+    Cell, Chunk, ChunkBody, PlaceInput, Placed, Placement, Region, RegionIndex, Removed,
+    SQLiteStore, TokenHash, WallError, WallStore,
+};
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -410,4 +422,94 @@ async fn configured_admin_token_can_remove_a_wall_cell() {
         store.cell(blobatar_wall::Cell { x: 0, y: 0 }).unwrap(),
         None
     );
+}
+
+struct BlockingRegionStore {
+    inner: SQLiteStore,
+    entered: Arc<AtomicBool>,
+    gate: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl WallStore for BlockingRegionStore {
+    fn region(&self, region: Region) -> Result<RegionIndex, WallError> {
+        self.entered.store(true, Ordering::Release);
+        let (lock, condition) = &*self.gate;
+        let mut released = lock.lock().unwrap();
+        while !*released {
+            released = condition.wait(released).unwrap();
+        }
+        self.inner.region(region)
+    }
+
+    fn chunk(&self, chunk: Chunk) -> Result<ChunkBody, WallError> {
+        self.inner.chunk(chunk)
+    }
+
+    fn mine(&self, token: &TokenHash, limit: usize) -> Result<Vec<Placement>, WallError> {
+        self.inner.mine(token, limit)
+    }
+
+    fn place(&self, input: PlaceInput) -> Result<Placed, WallError> {
+        self.inner.place(input)
+    }
+
+    fn remove(&self, cell: Cell) -> Result<Removed, WallError> {
+        self.inner.remove(cell)
+    }
+
+    fn cell(&self, cell: Cell) -> Result<Option<Placement>, WallError> {
+        self.inner.cell(cell)
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn wall_store_reads_run_off_async_runtime_thread() {
+    let entered = Arc::new(AtomicBool::new(false));
+    let released = Arc::new(AtomicBool::new(false));
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let store = Arc::new(BlockingRegionStore {
+        inner: SQLiteStore::in_memory().unwrap(),
+        entered: entered.clone(),
+        gate: gate.clone(),
+    });
+    let app = router_with_wall(WallService::new(store));
+    let request_task = tokio::spawn(
+        app.oneshot(
+            Request::builder()
+                .uri("/wall/r/0_0")
+                .header(header::HOST, "127.0.0.1:3000")
+                .body(Body::empty())
+                .unwrap(),
+        ),
+    );
+
+    let (observed_tx, observed_rx) = mpsc::channel();
+    let observer_entered = entered.clone();
+    let observer_released = released.clone();
+    let observer_task = tokio::spawn(async move {
+        while !observer_entered.load(Ordering::Acquire) {
+            tokio::task::yield_now().await;
+        }
+        let observed_during_read = !observer_released.load(Ordering::Acquire);
+        observed_tx.send(observed_during_read).unwrap();
+        observed_during_read
+    });
+
+    let release_gate = gate.clone();
+    let release_flag = released.clone();
+    let release_thread = std::thread::spawn(move || {
+        let _ = observed_rx.recv_timeout(Duration::from_secs(2));
+        release_flag.store(true, Ordering::Release);
+        let (lock, condition) = &*release_gate;
+        *lock.lock().unwrap() = true;
+        condition.notify_all();
+    });
+
+    let observed_during_read = observer_task.await.unwrap();
+    let response = request_task.await.unwrap().unwrap();
+    release_thread.join().unwrap();
+
+    assert!(entered.load(Ordering::Acquire));
+    assert!(observed_during_read);
+    assert_eq!(response.status(), StatusCode::OK);
 }

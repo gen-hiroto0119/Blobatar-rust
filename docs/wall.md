@@ -7,6 +7,25 @@ wire format, `WallStore` trait, and SQLite implementation.
 
 ## Running locally
 
+The native wall is available through the demo's **Open wall** button or
+`cargo run -p blobatar-demo -- --wall`. It uses SQLite directly on GPUI's
+background executor; no HTTP server or browser is needed. `BLOBATAR_WALL_DB`
+overrides its default `$HOME/.blobatar/wall.sqlite3` database. The desktop and
+server can share an explicitly configured database path, but use separate local
+identities. A private `<database stem>.desktop-identity` file persists desktop
+ownership for **Find mine** and the one-placement-per-UTC-day quota. Do not delete
+or publish that file. The desktop never posts to a public service.
+
+Drag/scroll to pan, use the zoom buttons or Ctrl/Command+scroll for pointer-anchored
+zoom, and click a cell (or use arrow keys) to select it. Empty cells show a name
+and expression preview; occupied cells show name, expression and UTC date.
+Failed out-of-reach placement can suggest a reachable cell for confirmation.
+**Origin**, **Find mine** and **Refresh** preserve the current name/expression.
+Visible chunks plus a reach halo are loaded, old drawings are evicted and reused
+between frames, and zoom below 30% uses overview dots. There is no continuous
+animation or polling on this screen. Native acceptance/performance verification
+is still required; this is not yet an online wall client.
+
 The server still binds to `127.0.0.1:3000` by default. The relevant
 environment variables are:
 

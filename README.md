@@ -206,6 +206,15 @@ help, errors and OpenAPI assets are frozen from upstream commit `a7fd546`. The
 Generation 1 fixture contains 1,543 cases and verifies the archive integrity
 above.
 
+## Native wall
+
+Open **壁を開く / Open wall** in the demo, or run
+`cargo run -p blobatar-demo -- --wall`. The desktop wall stores placements in a
+local SQLite database and does not post to an external service; see
+[docs/wall.md](docs/wall.md) for configuration and controls. The backend and
+native client are implemented; native interaction and performance acceptance
+remain pending.
+
 ## Delivery stages
 
 | Stage | Scope | Status |
@@ -214,7 +223,7 @@ above.
 | C | GPUI vector component and macOS static image comparison | Ten shapes, fourteen static expressions and the 400-avatar size/background/surface matrix compared on macOS; see [comparison notes](docs/render-matrix.md) |
 | D | 14 expressions, morph, idle motion, gaze projection | Native expression/Always/reduced-motion controls exercised on macOS; gaze adapter wired, native gaze/hover verification pending |
 | E | Editor, exports/settings, reusable showcase components | Generation 2 editor, exports/settings and six reusable native views implemented; native interaction acceptance pending |
-| F | Generation 1 core/editor/exports, avatar HTTP API and SQLite wall backend/API | Generation 1 core/editor/exports and frozen avatar HTTP API verified; SQLite wall backend/routes implemented |
+| F | Generation 1 core/editor/exports, avatar HTTP API and SQLite wall backend/API | Generation 1 core/editor/exports and frozen avatar HTTP API verified; SQLite wall backend/routes and native client implemented, native acceptance pending |
 | G | Accessibility, performance evidence, packaging and user/API documentation | Not complete |
 
 Static SVG output is an intermediate milestone, not the desktop demo or final

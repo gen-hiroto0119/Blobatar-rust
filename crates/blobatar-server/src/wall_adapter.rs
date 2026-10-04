@@ -117,12 +117,24 @@ impl WallService {
             ["c", key, version] if request.method() == axum::http::Method::GET => {
                 self.chunk(key, version).await
             }
-            ["mine"] if request.method() == axum::http::Method::GET => self.mine(&request),
+            ["mine"] if request.method() == axum::http::Method::GET => {
+                let cookie = request
+                    .headers()
+                    .get(header::COOKIE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_owned);
+                self.mine(cookie).await
+            }
             ["place"] if request.method() == axum::http::Method::POST => {
                 self.place(request, url, peer).await
             }
             ["p", key] if request.method() == axum::http::Method::DELETE => {
-                self.remove(&request, key)
+                let authorization = request
+                    .headers()
+                    .get(header::AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_owned);
+                self.remove(authorization, key).await
             }
             _ => json_response(json!({"error": "no such thing"}), StatusCode::NOT_FOUND, []),
         }
@@ -132,10 +144,15 @@ impl WallService {
         let Some(parsed) = parse_chunk_key(key) else {
             return json_response(json!({"error": "bad region"}), StatusCode::BAD_REQUEST, []);
         };
-        match self.store.region(Region {
-            rx: parsed.cx,
-            ry: parsed.cy,
-        }) {
+        let store = self.store.clone();
+        match run_store(move || {
+            store.region(Region {
+                rx: parsed.cx,
+                ry: parsed.cy,
+            })
+        })
+        .await
+        {
             Ok(index) => {
                 let versions: serde_json::Map<_, _> = index
                     .chunks
@@ -168,7 +185,8 @@ impl WallService {
         {
             return json_response(json!({"error": "bad chunk"}), StatusCode::BAD_REQUEST, []);
         }
-        let mut body = match self.store.chunk(parsed) {
+        let store = self.store.clone();
+        let mut body = match run_store(move || store.chunk(parsed)).await {
             Ok(body) => body,
             Err(error) => return store_error(error),
         };
@@ -183,29 +201,29 @@ impl WallService {
             .expect("valid wall chunk response")
     }
 
-    fn mine(&self, request: &Request<Body>) -> Response<Body> {
-        let token = request
-            .headers()
-            .get(header::COOKIE)
-            .and_then(|value| value.to_str().ok())
-            .and_then(token_from_cookie);
-        let cells = match token {
+    async fn mine(&self, cookie: Option<String>) -> Response<Body> {
+        let placements = match cookie.as_deref().and_then(token_from_cookie) {
             None => Vec::new(),
-            Some(token) => match self.store.mine(&hash_token(token), 8) {
-                Ok(placements) => placements
-                    .into_iter()
-                    .map(|placement| {
-                        json!({
-                            "x": placement.x,
-                            "y": placement.y,
-                            "seed": placement.seed,
-                            "at": placement.at
-                        })
-                    })
-                    .collect(),
-                Err(error) => return store_error(error),
-            },
+            Some(token) => {
+                let token = hash_token(token);
+                let store = self.store.clone();
+                match run_store(move || store.mine(&token, 8)).await {
+                    Ok(placements) => placements,
+                    Err(error) => return store_error(error),
+                }
+            }
         };
+        let cells: Vec<_> = placements
+            .into_iter()
+            .map(|placement| {
+                json!({
+                    "x": placement.x,
+                    "y": placement.y,
+                    "seed": placement.seed,
+                    "at": placement.at
+                })
+            })
+            .collect();
         json_response_with_headers(
             json!({"cells": cells}),
             StatusCode::OK,
@@ -339,7 +357,8 @@ impl WallService {
             identity,
             token: hash_token(&token),
         };
-        match self.store.place(input) {
+        let store = self.store.clone();
+        match run_store(move || store.place(input)).await {
             Ok(placed) => {
                 let cookie = format!(
                     "wall={token}; Path=/; Max-Age={COOKIE_MAX_AGE}; HttpOnly;{} SameSite=Lax",
@@ -362,14 +381,12 @@ impl WallService {
         }
     }
 
-    fn remove(&self, request: &Request<Body>, key: &str) -> Response<Body> {
+    async fn remove(&self, authorization: Option<String>, key: &str) -> Response<Body> {
         let Some(expected) = self.admin_token.as_deref() else {
             return json_response(json!({"error": "no such thing"}), StatusCode::NOT_FOUND, []);
         };
-        let offered = request
-            .headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
+        let offered = authorization
+            .as_deref()
             .and_then(|value| value.strip_prefix("Bearer "));
         if offered.is_none_or(|value| !same_secret(value, expected)) {
             return json_response(json!({"error": "no such thing"}), StatusCode::NOT_FOUND, []);
@@ -377,7 +394,8 @@ impl WallService {
         let Some(parsed) = parse_cell_key(key) else {
             return json_response(json!({"error": "bad cell"}), StatusCode::BAD_REQUEST, []);
         };
-        match self.store.remove(parsed) {
+        let store = self.store.clone();
+        match run_store(move || store.remove(parsed)).await {
             Ok(removed) => json_response(
                 json!({
                     "removed": {
@@ -419,6 +437,16 @@ impl WallService {
             })
             .await
     }
+}
+
+async fn run_store<T, F>(operation: F) -> Result<T, WallError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, WallError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(operation)
+        .await
+        .map_err(|_| WallError::Database("wall store task failed".to_owned()))?
 }
 
 fn integer_field(value: Option<&Value>) -> Option<i32> {

@@ -719,6 +719,7 @@ dependencies = [
  "blobatar-core",
  "blobatar-export",
  "blobatar-gpui",
+ "blobatar-wall",
  "rand 0.8.8",
  "serde",
  "serde_json",

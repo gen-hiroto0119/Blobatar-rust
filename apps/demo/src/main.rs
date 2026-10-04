@@ -318,6 +318,9 @@ impl Render for Demo {
             .flex_col()
             .gap_6()
             .child(div().text_2xl().child("Blobatar / Native Rust"))
+            .child(div().id("open-wall").px_3().py_2().rounded_md().bg(rgb(0x354a70)).cursor_pointer()
+                .child("壁を開く / Open wall")
+                .on_click(cx.listener(|_, _, _, cx| { open_wall(cx); })))
             .child(div().id("open-components").px_3().py_2().rounded_md().bg(rgb(0x354a70)).cursor_pointer()
                 .child("再利用部品を開く / Open components")
                 .on_click(cx.listener(|_, _, _, cx| { open_components(cx); })))
@@ -474,7 +477,12 @@ fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let editor = args.as_slice() == ["--editor"];
     let components = args.as_slice() == ["--components"];
-    let matrix = match matrix::Matrix::from_args(if editor || components { &[] } else { &args }) {
+    let wall = args.as_slice() == ["--wall"];
+    let matrix = match matrix::Matrix::from_args(if editor || components || wall {
+        &[]
+    } else {
+        &args
+    }) {
         Ok(matrix) => matrix,
         Err(message) => {
             eprintln!("{message}");
@@ -483,6 +491,11 @@ fn main() {
     };
     Application::new().run(move |cx: &mut App| {
         blobatar_ui::init(cx);
+        if wall {
+            open_wall(cx);
+            cx.activate(true);
+            return;
+        }
         if components {
             open_components(cx);
             cx.activate(true);
@@ -532,6 +545,22 @@ fn open_editor(cx: &mut App) {
         |_, cx| cx.new(blobatar_ui::Editor::new),
     )
     .expect("open Blobatar editor");
+}
+
+fn open_wall(cx: &mut App) {
+    let bounds = Bounds::centered(None, size(px(1180.0), px(860.0)), cx);
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(gpui::TitlebarOptions {
+                title: Some("Blobatar Wall".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        |_, cx| cx.new(blobatar_ui::Wall::new),
+    )
+    .expect("open Blobatar wall");
 }
 
 fn open_components(cx: &mut App) {

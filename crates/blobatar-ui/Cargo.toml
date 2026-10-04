@@ -8,6 +8,7 @@ license.workspace = true
 blobatar-core = { path = "../blobatar-core" }
 blobatar-export = { path = "../blobatar-export" }
 blobatar-gpui = { path = "../blobatar-gpui" }
+blobatar-wall = { path = "../blobatar-wall" }
 unicode-segmentation = "1.12"
 rand = "0.8"
 serde.workspace = true
