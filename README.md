@@ -49,6 +49,30 @@ The native code panel uses monospace Rust syntax highlighting for keywords,
 strings (including raw JSON literals), comments, types, calls and numbers.
 Highlighting changes presentation only; Copy still copies the original plain Rust.
 
+### Editor appearance
+
+The editor adopts the [Plexer design foundations](https://www.figma.com/design/Z20UsjBdlp8nv3IBet8Dfz/Plexer?node-id=41-205),
+not its product-specific navigation or authentication flows. It starts in Light;
+the header's **ダーク / Dark** or **ライト / Light** button switches the editor's
+appearance without resetting the name, overrides, unapplied JSON or animation.
+Appearance is local to the editor window and is not part of avatar settings JSON.
+The wall, component gallery and motion demo keep their existing appearance.
+
+Reusable tokens and button/panel styling live in `blobatar_ui::theme`. Controls
+use 8px corners, panels 12px, buttons 36px and inputs 40px. Hover, keyboard focus,
+selection and disabled file actions have distinct styling; invalid traits mark
+the JSON field until edited or replaced. Below 980 logical pixels, the preview
+and controls stack in a single scrollable column instead of clipping sideways.
+The code panel deliberately stays dark in both themes to retain the existing
+syntax colors; long code lines scroll horizontally and Copy uses the original
+source. Its copied label resets when the generated source changes.
+
+Inter, Noto Sans JP and IBM Plex Mono are bundled under the SIL OFL 1.1, so the
+editor does not depend on fonts installed on the host or download fonts at
+runtime. The font sources, hashes and license notices are in
+`crates/blobatar-ui/assets/fonts/`. Japanese headings/code use Noto Sans JP as a
+fallback. This is the first editor/theme milestone, not a redesign of all screens.
+
 Frozen editor tests cover 10,624 picker transitions and 270 historical
 nonempty-name readback states. The 45 pinned empty-name readback records remain
 unchanged but are excluded from readback equality for the intentional

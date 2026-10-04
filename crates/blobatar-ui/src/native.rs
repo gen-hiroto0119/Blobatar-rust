@@ -11,9 +11,9 @@ use blobatar_export::{Motion, Settings, save_atomic};
 use blobatar_gpui::{
     Animate, AnimatedBlobatar, Blobatar, Drawing,
     gpui::{
-        self, AnyElement, Bounds, ClipboardItem, Context, Entity, HighlightStyle, KeyDownEvent,
-        MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Render, SharedString, StyledText,
-        Subscription, Window, canvas, div, prelude::*, px, relative, rgb,
+        self, AnyElement, Bounds, ClipboardItem, Context, Entity, FontWeight, HighlightStyle,
+        KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Render, SharedString,
+        StyledText, Subscription, Window, canvas, div, prelude::*, px, relative, rgb,
     },
 };
 use rand::Rng;
@@ -25,6 +25,7 @@ use crate::{
     editor::EditorState,
     snippet,
     text_input::TextInput,
+    theme::{self, Appearance, ButtonStyle},
 };
 
 const CROWD: [&str; 7] = ["ひろと", "Alex", "Samira", "María", "李明", "Noor", "Kai"];
@@ -51,6 +52,8 @@ pub struct Editor {
     code_highlights: Vec<(Range<usize>, HighlightStyle)>,
     status: String,
     busy: bool,
+    appearance: Appearance,
+    copied: bool,
 }
 
 impl Editor {
@@ -84,7 +87,10 @@ impl Editor {
             code_highlights: Vec::new(),
             status: String::new(),
             busy: false,
+            appearance: Appearance::default(),
+            copied: false,
         };
+        editor.sync_appearance(cx);
         editor.refresh(true, cx);
         editor
     }
@@ -136,13 +142,20 @@ impl Editor {
             })
             .collect();
         self.fit = self.state.fit_readback();
-        self.code = snippet::snippet(&self.state);
+        let code = snippet::snippet(&self.state);
+        if self.code != code {
+            self.copied = false;
+        }
+        self.code = code;
         self.code_highlights = rust_highlights(&self.code);
         let traits =
             serde_json::to_string(&self.state.settings.options.traits).expect("valid traits");
         let advanced = self.advanced.clone();
         let draft = &mut self.advanced_json;
         advanced.update(cx, |input, cx| {
+            if force_advanced_sync {
+                input.set_invalid(false, cx);
+            }
             if let Some(traits) = draft.sync(input.text(), traits, force_advanced_sync) {
                 input.set_text(traits, cx);
             }
@@ -154,34 +167,33 @@ impl Editor {
         &self,
         id: impl Into<SharedString>,
         label: impl Into<SharedString>,
-        selected: bool,
+        style: impl Into<ButtonStyle>,
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> AnyElement {
+        let style = style.into();
         let action = Arc::new(action);
         let key_action = action.clone();
-        div()
-            .id(id.into())
-            .focusable()
-            .tab_stop(true)
-            .px_3()
-            .py_2()
-            .rounded_md()
-            .border_1()
-            .border_color(rgb(if selected { 0x6d91bd } else { 0x323c4c }))
-            .bg(rgb(if selected { 0x354a70 } else { 0x222938 }))
-            .text_sm()
-            .cursor_pointer()
-            .focus(|style| style.border_color(rgb(0xf4c76b)))
-            .child(label.into())
-            .on_click(cx.listener(move |this, _, window, cx| action(this, window, cx)))
+        theme::button(id, label, self.appearance, style)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if !style.disabled {
+                    action(this, window, cx);
+                }
+            }))
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                if !style.disabled && matches!(event.keystroke.key.as_str(), "enter" | "space") {
                     key_action(this, window, cx);
                     cx.stop_propagation();
                 }
             }))
             .into_any_element()
+    }
+
+    fn sync_appearance(&mut self, cx: &mut Context<Self>) {
+        for input in [&self.name, &self.advanced] {
+            input.update(cx, |input, cx| input.set_appearance(self.appearance, cx));
+        }
+        cx.notify();
     }
 
     fn picker(
@@ -251,6 +263,7 @@ impl Editor {
     }
 
     fn slider(&self, axis: &'static Axis, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette = self.appearance.palette();
         let value = self.state.reader().get(axis.key);
         let locked = self.state.settings.options.traits.contains_key(axis.key);
         let weak = cx.entity().downgrade();
@@ -291,9 +304,9 @@ impl Editor {
                     .rounded_md()
                     .cursor_pointer()
                     .border_1()
-                    .border_color(rgb(0x323c4c))
-                    .bg(rgb(0x222938))
-                    .focus(|style| style.border_color(rgb(0xf4c76b)))
+                    .border_color(palette.border)
+                    .bg(palette.background)
+                    .focus(move |style| style.border_2().border_color(palette.accent))
                     .child(
                         div()
                             .absolute()
@@ -302,7 +315,11 @@ impl Editor {
                             .h_full()
                             .w(relative(value as f32))
                             .rounded_md()
-                            .bg(rgb(if locked { 0x627fa7 } else { 0x455469 })),
+                            .bg(if locked {
+                                palette.accent
+                            } else {
+                                palette.muted.opacity(0.45)
+                            }),
                     )
                     .when_some(ghost, |track, ghost| {
                         track.child(
@@ -312,7 +329,7 @@ impl Editor {
                                 .bottom_0()
                                 .left(relative(ghost as f32))
                                 .w(px(2.0))
-                                .bg(rgb(0xf4c76b)),
+                                .bg(palette.selected_text),
                         )
                     })
                     .child(
@@ -363,9 +380,14 @@ impl Editor {
                     })),
             )
             .when_some(ghost, |row, ghost| {
-                row.child(div().text_xs().text_color(rgb(0xf4c76b)).child(format!(
-                    "収まり補正 / Fit: {ghost:.3} (requested {value:.3})"
-                )))
+                row.child(
+                    div()
+                        .text_xs()
+                        .text_color(palette.selected_text)
+                        .child(format!(
+                            "収まり補正 / Fit: {ghost:.3} (requested {value:.3})"
+                        )),
+                )
             })
     }
 
@@ -464,21 +486,27 @@ impl Editor {
         cx.notify();
     }
 
-    fn preview_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+    fn preview_panel(&self, compact: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette = self.appearance.palette();
+        theme::panel(self.appearance)
             .id("editor-preview")
-            .w(px(420.0))
-            .flex_shrink_0()
-            .h_full()
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(div().text_sm().child("名前 / Name · 日本語IME対応"))
+            .min_w_0()
+            .when(compact, |panel| panel.w_full())
+            .when(!compact, |panel| {
+                panel.w(px(420.0)).h_full().overflow_y_scroll()
+            })
+            .child(theme::heading("プレビュー / Preview"))
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("名前 / Name"),
+            )
             .child(self.name.clone())
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .gap_2()
                     .child(self.button(
                         "shuffle",
@@ -517,31 +545,58 @@ impl Editor {
                 div()
                     .flex()
                     .justify_center()
-                    .p_4()
+                    .items_center()
+                    .min_h(px(232.0))
+                    .flex_shrink_0()
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .bg(palette.background)
                     .child(self.preview.clone()),
             )
-            .child(div().text_sm().child("同じ設定・7つの名前 / Crowd"))
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("同じ設定・7つの名前 / Crowd"),
+            )
             .child(
                 div()
                     .flex()
-                    .gap_1()
+                    .flex_wrap()
+                    .gap_2()
                     .children(self.crowd.iter().enumerate().map(|(index, drawing)| {
                         div()
                             .flex()
                             .flex_col()
                             .items_center()
                             .child(Blobatar::from_drawing(drawing.clone()).size(54.0))
-                            .child(div().text_xs().child(CROWD[index]))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .line_height(px(18.0))
+                                    .text_color(palette.muted)
+                                    .child(CROWD[index]),
+                            )
                     })),
             )
-            .child(div().text_sm().child("生成コード / Rust/GPUI"))
+            .child(
+                div()
+                    .border_t_1()
+                    .border_color(palette.border)
+                    .pt_4()
+                    .child(theme::heading("生成コード / Rust/GPUI")),
+            )
             .child(self.button(
                 "copy-code",
-                "Rustコードをコピー / Copy Rust code",
-                false,
+                if self.copied {
+                    "コピー完了 / Copied"
+                } else {
+                    "Rustコードをコピー / Copy Rust code"
+                },
+                self.copied,
                 cx,
                 |this, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(this.code.clone()));
+                    this.copied = true;
                     this.status = "コピー完了 / Copied".into();
                     cx.notify();
                 },
@@ -549,16 +604,17 @@ impl Editor {
             .child(
                 div()
                     .id("editor-code")
-                    .p_3()
-                    .rounded_md()
-                    .bg(rgb(0x151b26))
-                    .font_family(if cfg!(target_os = "macos") {
-                        "Menlo"
-                    } else {
-                        "DejaVu Sans Mono"
-                    })
+                    .w_full()
+                    .flex_shrink_0()
+                    .overflow_x_scroll()
+                    .p_4()
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .bg(rgb(0x1d1c1a))
+                    .font(theme::font_with_japanese_fallback(theme::CODE_FONT))
                     .text_color(rgb(0xe6edf5))
-                    .text_xs()
+                    .text_size(px(12.0))
+                    .line_height(px(20.0))
+                    .whitespace_nowrap()
                     .child(
                         StyledText::new(self.code.clone())
                             .with_highlights(self.code_highlights.clone()),
@@ -566,27 +622,22 @@ impl Editor {
             )
     }
 
-    fn controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn controls(&self, compact: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette = self.appearance.palette();
         let applicable = self.state.applicable_axes();
         let background = match self.state.settings.options.background.as_ref() {
             Some(Background::Kind(kind)) => kind.as_str(),
             Some(Background::Enabled(true)) => "circle",
             _ => "none",
         };
-        div()
+        theme::panel(self.appearance)
             .id("editor-controls")
-            .flex_1()
             .min_w_0()
-            .h_full()
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .p_4()
-            .rounded_lg()
-            .bg(rgb(0x181e29))
+            .when(compact, |panel| panel.w_full())
+            .when(!compact, |panel| panel.flex_1().h_full().overflow_y_scroll())
+            .child(theme::heading("カスタマイズ / Customize"))
             .child(div().text_sm().child("世代 / Generation"))
-            .child(div().flex().gap_2().children([1, 2].into_iter().map(|generation| {
+            .child(div().flex().flex_wrap().gap_2().children([1, 2].into_iter().map(|generation| {
                 self.button(
                     format!("generation-{generation}"),
                     format!("生成{generation} / Generation {generation}"),
@@ -678,6 +729,7 @@ impl Editor {
             .child(
                 div()
                     .text_xs()
+                    .text_color(palette.muted)
                     .child("未選択は自動。全選択は候補を保持。固定はShuffle後も保持します。"),
             )
             .children(Group::ALL.into_iter().map(|group| {
@@ -685,7 +737,11 @@ impl Editor {
                     .flex()
                     .flex_col()
                     .gap_3()
-                    .child(div().text_lg().child(group.label()))
+                    .flex_shrink_0()
+                    .pt_4()
+                    .border_t_1()
+                    .border_color(palette.border)
+                    .child(theme::heading(group.label()))
                     .children(
                         applicable
                             .iter()
@@ -699,7 +755,11 @@ impl Editor {
             }))
             .child(
                 div()
-                    .text_sm()
+                    .text_size(px(13.0))
+                    .text_color(palette.muted)
+                    .pt_4()
+                    .border_t_1()
+                    .border_color(palette.border)
                     .child(
                         "詳細traits / Advanced JSON · 全traitキーを入力できます · 未適用JSONはドラフトとして保持 / Unapplied JSON stays as a draft",
                     ),
@@ -718,6 +778,7 @@ impl Editor {
                             this.refresh_with_advanced_sync(true, true, cx);
                         }
                         Err(error) => {
+                            this.advanced.update(cx, |input, cx| input.set_invalid(true, cx));
                             this.status = format!("JSONエラー / Invalid traits: {error}");
                             cx.notify();
                         }
@@ -728,16 +789,19 @@ impl Editor {
 }
 
 impl Render for Editor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette = self.appearance.palette();
+        let compact = window.viewport_size().width < px(980.0);
         div()
             .id("editor")
             .size_full()
-            .bg(rgb(0x10151e))
-            .text_color(rgb(0xe7edf5))
-            .p_6()
+            .bg(palette.background)
+            .text_color(palette.text)
+            .font_family(theme::BODY_FONT)
+            .text_size(px(14.0))
+            .line_height(px(22.0))
             .flex()
             .flex_col()
-            .gap_4()
             .on_key_down(|event, window, cx| {
                 if event.keystroke.key == "tab" {
                     if event.keystroke.modifiers.shift {
@@ -770,8 +834,34 @@ impl Render for Editor {
                     .flex()
                     .justify_between()
                     .items_center()
-                    .gap_3()
-                    .child(div().text_2xl().child("Blobatar · エディター / Editor"))
+                    .flex_shrink_0()
+                    .h(px(48.0))
+                    .px_6()
+                    .bg(palette.surface)
+                    .border_b_1()
+                    .border_color(palette.border)
+                    .child(div().font_family(theme::HEADING_FONT).font_weight(FontWeight::SEMIBOLD)
+                        .child("Blobatar").child(div().ml_4().text_color(palette.muted).child("/ Editor" )).flex())
+                    .child(self.button(
+                        "editor-theme",
+                        if self.appearance == Appearance::Light { "ダーク / Dark" } else { "ライト / Light" },
+                        false,
+                        cx,
+                        |this, _, cx| {
+                            this.appearance = this.appearance.toggled();
+                            this.sync_appearance(cx);
+                        },
+                    )),
+            )
+            .child(div().flex().flex_col().flex_1().min_h_0().gap_4().p_6()
+                .when(compact, |body| body.p_4())
+                .child(div().flex().flex_wrap().justify_between().items_center().gap_4().flex_shrink_0()
+                    .child(div().flex().flex_col().gap_1()
+                        .child(div().font(theme::font_with_japanese_fallback(theme::HEADING_FONT))
+                            .font_weight(FontWeight::SEMIBOLD).text_size(px(28.0)).line_height(px(36.0))
+                            .child("エディター / Editor"))
+                        .child(div().text_size(px(12.0)).line_height(px(18.0)).text_color(palette.muted)
+                            .child("名前から、自分だけのアバターを。 / Create your avatar.")))
                     .child(
                         div()
                             .flex()
@@ -780,34 +870,35 @@ impl Render for Editor {
                             .child(self.button(
                                 "save-svg",
                                 "SVG保存",
-                                false,
+                                ButtonStyle::primary(self.busy),
                                 cx,
                                 |this, _, cx| this.export(Export::Svg, cx),
                             ))
                             .child(self.button(
                                 "save-png",
                                 "PNG 512px",
-                                false,
+                                ButtonStyle::secondary(self.busy),
                                 cx,
                                 |this, _, cx| this.export(Export::Png, cx),
                             ))
                             .child(self.button(
                                 "save-settings",
                                 "設定保存 / Save",
-                                false,
+                                ButtonStyle::secondary(self.busy),
                                 cx,
                                 |this, _, cx| this.export(Export::Settings, cx),
                             ))
                             .child(self.button(
                                 "load-settings",
                                 "設定読込 / Load",
-                                false,
+                                ButtonStyle::secondary(self.busy),
                                 cx,
                                 |this, _, cx| this.load(cx),
                             )),
                     ),
             )
-            .child(div().text_xs().child(if self.status.is_empty() {
+            .child(div().flex_shrink_0().text_size(px(12.0)).line_height(px(18.0))
+                .text_color(palette.muted).child(if self.status.is_empty() {
                 format!(
                     "生成{} / Generation {} · SVG/PNGは静止画です · Tabと矢印キーで操作",
                     self.state.settings.generation, self.state.settings.generation
@@ -817,13 +908,15 @@ impl Render for Editor {
             }))
             .child(
                 div()
+                    .id("editor-panels")
                     .flex()
                     .flex_1()
                     .min_h_0()
                     .gap_6()
-                    .child(self.preview_panel(cx))
-                    .child(self.controls(cx)),
-            )
+                    .when(compact, |panels| panels.flex_col().overflow_y_scroll())
+                    .child(self.preview_panel(compact, cx))
+                    .child(self.controls(compact, cx)),
+            ))
     }
 }
 

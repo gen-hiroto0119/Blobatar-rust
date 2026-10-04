@@ -10,6 +10,8 @@ use blobatar_gpui::gpui::{
 };
 use unicode_segmentation::*;
 
+use crate::theme::{self, Appearance};
+
 actions!(
     text_input,
     [
@@ -43,6 +45,8 @@ pub struct TextInput {
     secret: bool,
     masked: bool,
     caret: Option<Point<Pixels>>,
+    appearance: Option<Appearance>,
+    invalid: bool,
 }
 
 pub(crate) enum InputEvent {
@@ -347,6 +351,7 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.invalid = false;
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -371,6 +376,7 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.invalid = false;
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -497,7 +503,12 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), hsla(0., 0., 0.65, 0.8))
+            (
+                input.placeholder.clone(),
+                input
+                    .appearance
+                    .map_or(hsla(0., 0., 0.65, 0.8), |theme| theme.palette().muted),
+            )
         } else {
             (content, style.color)
         };
@@ -559,7 +570,9 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    gpui::blue(),
+                    input
+                        .appearance
+                        .map_or(gpui::blue(), |theme| theme.palette().accent),
                 )),
             )
         } else {
@@ -575,7 +588,9 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(0x3311ff30),
+                    input
+                        .appearance
+                        .map_or(rgba(0x3311ff30).into(), |theme| theme.palette().selection),
                 )),
                 None,
             )
@@ -676,12 +691,35 @@ impl Render for TextInput {
             .bg(rgb(0x222938))
             .line_height(px(30.))
             .text_size(px(15.))
+            .when_some(self.appearance, |input, appearance| {
+                let palette = appearance.palette();
+                input
+                    .h(px(theme::INPUT_HEIGHT))
+                    .min_h(px(theme::INPUT_HEIGHT))
+                    .items_center()
+                    .px_3()
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .border_1()
+                    .border_color(palette.border)
+                    .bg(palette.surface)
+                    .text_color(palette.text)
+                    .font_family(theme::BODY_FONT)
+                    .text_size(px(14.0))
+                    .line_height(px(22.0))
+                    .when(self.invalid, |input| {
+                        input.border_2().border_color(palette.accent)
+                    })
+                    .focus(move |input| input.border_2().border_color(palette.accent))
+            })
             .child(
                 div()
                     .h(px(30. + 4. * 2.))
                     .w_full()
                     .p(px(4.))
                     .bg(rgb(0x222938))
+                    .when_some(self.appearance, |input, appearance| {
+                        input.h(px(22.0)).p_0().bg(appearance.palette().surface)
+                    })
                     .child(TextElement { input: cx.entity() }),
             )
     }
@@ -720,11 +758,23 @@ impl TextInput {
             secret: false,
             masked: false,
             caret: None,
+            appearance: None,
+            invalid: false,
         }
     }
 
     pub fn text(&self) -> &str {
         &self.content
+    }
+
+    pub fn set_appearance(&mut self, appearance: Appearance, cx: &mut Context<Self>) {
+        self.appearance = Some(appearance);
+        cx.notify();
+    }
+
+    pub fn set_invalid(&mut self, invalid: bool, cx: &mut Context<Self>) {
+        self.invalid = invalid;
+        cx.notify();
     }
 
     pub fn secret(mut self) -> Self {
@@ -742,6 +792,7 @@ impl TextInput {
     }
 
     pub fn set_text(&mut self, value: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.invalid = false;
         self.reset();
         self.content = value.into();
         self.selected_range = self.content.len()..self.content.len();
