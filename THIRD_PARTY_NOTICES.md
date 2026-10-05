@@ -19,6 +19,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR OTHER DEALINGS IN THE SOFTWARE.
 
+## Bundled editor fonts
+
+Inter (The Inter Project Authors), Noto Sans JP (Adobe and Noto contributors) and
+IBM Plex Mono (IBM Corp.) are redistributed unmodified under SIL Open Font
+License 1.1. Full copyright/license notices and original download URLs with
+SHA-256 hashes are in `crates/blobatar-ui/assets/fonts/`. They are embedded for
+offline native text rendering; they are not part of generated avatar exports.
+
 ## Rust code highlighting
 
 `rustc_lexer 0.1.0` by The Rust Project Developers supplies Rust tokenization

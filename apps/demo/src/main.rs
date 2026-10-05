@@ -2,13 +2,15 @@ use blobatar_core::{Avatar, Background, Expression, Options, traits::Override};
 use blobatar_gpui::{
     Animate, AnimatedBlobatar, Blobatar, Drawing, GazeBounds, GazePoint, GazeTarget, PlaybackRate,
     gpui::{
-        self, App, Application, Bounds, Context, Entity, Render, Window, WindowBounds,
+        self, App, Application, Bounds, Context, Entity, Focusable, Render, Window, WindowBounds,
         WindowOptions, canvas, div, prelude::*, px, rgb, size,
     },
 };
 use std::{sync::Arc, time::Duration};
 mod components;
 mod matrix;
+
+gpui::actions!(blobatar_demo, [Quit]);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum GazeMode {
@@ -491,6 +493,15 @@ fn main() {
     };
     Application::new().run(move |cx: &mut App| {
         blobatar_ui::init(cx);
+        cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.bind_keys([gpui::KeyBinding::new("cmd-q", Quit, None)]);
+        cx.set_menus(vec![
+            gpui::Menu {
+                name: "Blobatar".into(),
+                items: vec![gpui::MenuItem::action("Quit Blobatar", Quit)],
+            },
+            blobatar_ui::edit_menu(),
+        ]);
         if wall {
             open_wall(cx);
             cx.activate(true);
@@ -542,7 +553,11 @@ fn open_editor(cx: &mut App) {
             }),
             ..Default::default()
         },
-        |_, cx| cx.new(blobatar_ui::Editor::new),
+        |window, cx| {
+            let editor = cx.new(blobatar_ui::Editor::new);
+            window.focus(&editor.focus_handle(cx));
+            editor
+        },
     )
     .expect("open Blobatar editor");
 }
