@@ -11,9 +11,10 @@ use blobatar_export::{Motion, Settings, save_atomic};
 use blobatar_gpui::{
     Animate, AnimatedBlobatar, Blobatar, Drawing,
     gpui::{
-        self, AnyElement, Bounds, ClipboardItem, Context, Entity, FontWeight, HighlightStyle,
-        KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Render, SharedString,
-        StyledText, Subscription, Window, canvas, div, prelude::*, px, relative, rgb,
+        self, AnyElement, App, Bounds, ClipboardItem, Context, Entity, FocusHandle, Focusable,
+        FontWeight, HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+        Pixels, Render, SharedString, StyledText, Subscription, Window, canvas, div, prelude::*,
+        px, relative, rgb,
     },
 };
 use rand::Rng;
@@ -38,6 +39,7 @@ enum Export {
 }
 
 pub struct Editor {
+    focus_handle: FocusHandle,
     state: EditorState,
     name: Entity<TextInput>,
     advanced: Entity<TextInput>,
@@ -73,6 +75,7 @@ impl Editor {
             }
         });
         let mut editor = Self {
+            focus_handle: cx.focus_handle(),
             state,
             name,
             advanced,
@@ -783,12 +786,20 @@ impl Editor {
     }
 }
 
+impl Focusable for Editor {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = self.appearance.palette();
         let compact = window.viewport_size().width < px(980.0);
         div()
             .id("editor")
+            .track_focus(&self.focus_handle)
+            .tab_stop(false)
             .size_full()
             .bg(palette.background)
             .text_color(palette.text)

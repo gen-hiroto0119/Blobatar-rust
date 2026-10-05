@@ -11,6 +11,7 @@ pub mod wall;
 pub mod wall_camera;
 
 pub use native::Editor;
+pub use text_input::edit_menu;
 pub use wall::Wall;
 
 pub fn init(cx: &mut blobatar_gpui::gpui::App) {

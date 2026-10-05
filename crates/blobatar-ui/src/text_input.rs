@@ -824,8 +824,46 @@ pub fn init(cx: &mut App) {
     ]);
 }
 
+/// Standard editing actions for both GPUI inputs and native file dialogs.
+/// Install this in the application's menu bar after calling `blobatar_ui::init`.
+pub fn edit_menu() -> gpui::Menu {
+    use gpui::{Menu, MenuItem, OsAction};
+    Menu {
+        name: "Edit".into(),
+        items: vec![
+            MenuItem::os_action("Cut", Cut, OsAction::Cut),
+            MenuItem::os_action("Copy", Copy, OsAction::Copy),
+            MenuItem::os_action("Paste", Paste, OsAction::Paste),
+            MenuItem::separator(),
+            MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn edit_menu_routes_to_native_responder_actions() {
+        use super::gpui::{MenuItem, OsAction};
+        let actions: Vec<_> = super::edit_menu()
+            .items
+            .into_iter()
+            .filter_map(|item| match item {
+                MenuItem::Action { os_action, .. } => os_action,
+                _ => None,
+            })
+            .collect();
+        assert!(matches!(
+            actions.as_slice(),
+            [
+                OsAction::Cut,
+                OsAction::Copy,
+                OsAction::Paste,
+                OsAction::SelectAll
+            ]
+        ));
+    }
+
     #[test]
     fn mask_positions_round_trip_unicode_boundaries() {
         let text = "日🦀本";
