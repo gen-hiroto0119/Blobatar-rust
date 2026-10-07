@@ -20,7 +20,9 @@ Merging the probes triggers their checks on the resulting `main` revision.
 ## Cost and check selection
 
 - Changes to native crates, apps, vendored code, root Cargo files or the pinned
-  upstream provenance select native checks. Core changes also select both probes.
+  upstream provenance select native checks. Core and root `Cargo.toml` changes
+  also select both probes; root `Cargo.lock` changes select native checks only
+  because each probe has its own lockfile.
 - GPUI probe or bundled-font changes select native probe checks and the Web build.
 - Worker changes select only Worker checks unless another affected path matches.
 - CI or Rust toolchain/configuration changes select every available workspace.
