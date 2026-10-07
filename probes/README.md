@@ -10,7 +10,7 @@ Only `blobatar-core` is shared with the product in this phase.
 - UI: `gpui-base = 0.7.1`, `gpui-pre` / `gpui-pre-platform = 0.3.8`.
   Base's published manifest pins this GPUI snapshot; its web platform resolves
   to `gpui-pre-web = 0.3.8`. Do not mix it with GPUI 0.2.2 entities or types.
-- Worker: `worker = 0.8.0`, `worker-build = 0.8.0`, Wrangler `4.40.0`.
+- Worker: `worker = 0.8.0`, `worker-build = 0.8.0`, Wrangler `4.148.0`.
 - Native / Worker: the root Rust 1.97.1 toolchain.
 - Browser: `nightly-2026-10-05`, `wasm32-unknown-unknown`, Trunk `0.21.14`.
 
@@ -36,12 +36,14 @@ The existing Noto Sans JP asset is reused with its existing OFL license.
 The preview uses GPUI's SVG image loader, **not** the existing animated GPUI
 path renderer: neither animation nor renderer parity is established here.
 
-The input is a draft. Generate applies it; Generation toggles 1/2 and applies
+The input is a draft. Generate or unmodified Enter in the input applies it;
+Generation toggles 1/2 and applies
 the current input. Empty input becomes `blobatar`, without trimming nonempty
 names. Activations counts generation actions so duplicate Enter/Space handling
 is observable. Copy SVG copies the applied SVG, not the pending name. It uses
 GPUI's clipboard abstraction and makes no claim that browser permission was
 granted; production clipboard failure feedback remains a P2 requirement.
+Light/Dark switches Plexer-derived application colors and Base's semantic theme.
 
 This first probe uses `single_threaded_web()` as the upstream Base example does.
 It does not prove the multithreaded configuration or either renderer backend
@@ -56,7 +58,7 @@ Japanese text entry alone is not proof of IME composition or accessibility.
 
 ## workers-rs: core SVGs in workerd
 
-Prerequisites: Node.js/npm, Python 3, and:
+Prerequisites: Node.js >=22/npm, Python 3, and:
 
 ```sh
 rustup target add wasm32-unknown-unknown --toolchain 1.97.1
@@ -72,6 +74,10 @@ npm run smoke
 login or deployment is needed. Do not run deploy/login/provisioning commands.
 `workers_dev` and preview URLs are disabled; no deployment script is provided.
 The build tool emits minimal JS runtime glue around the Rust Worker Wasm.
+Wrangler 4.148.0's Miniflare dependency currently pins vulnerable sharp 0.35.4.
+The scoped npm override pins it to 0.35.5 per
+[GHSA-wq5f-xc86-pv6w](https://github.com/advisories/GHSA-wq5f-xc86-pv6w);
+remove the override once Wrangler/Miniflare pins sharp at 0.35.5 or newer.
 
 Supported **probe-only** contract:
 

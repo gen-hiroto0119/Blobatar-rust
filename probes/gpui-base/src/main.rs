@@ -2,12 +2,13 @@ use std::{borrow::Cow, sync::Arc};
 
 use blobatar_core::{Avatar, Generation, Options};
 use gpui::{
-    App, AppContext, ClipboardItem, Context, Entity, Focusable, Image, ImageFormat, IntoElement,
-    MouseButton, Render, Subscription, Window, WindowOptions, div, img, prelude::*, px, rgb,
+    App, AppContext, ClipboardItem, Context, Entity, Focusable, Hsla, Image, ImageFormat,
+    IntoElement, MouseButton, Render, Subscription, Window, WindowOptions, div, img, prelude::*,
+    px, rgb, rgba,
 };
 use gpui_base::{
-    Button, Input, InputBase, Root,
-    input::{InputEvent, InputState},
+    Button, Input, InputBase, Root, Theme, ThemeAppearance,
+    input::{Enter, InputEvent, InputState},
 };
 
 const FONT: &str = "Noto Sans JP";
@@ -46,6 +47,7 @@ fn main() {
 }
 
 struct Probe {
+    dark: bool,
     name: Entity<InputState>,
     generation: Generation,
     image: Arc<Image>,
@@ -59,9 +61,22 @@ impl Probe {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let name = cx.new(|cx| InputState::new(window, cx).default_value("blobatar"));
         name.update(cx, |state, cx| state.focus(window, cx));
-        let input_events = cx.subscribe(&name, |_, _, _: &InputEvent, cx| cx.notify());
+        let input_events = cx.subscribe(&name, |this, _, event: &InputEvent, cx| {
+            if matches!(
+                event,
+                InputEvent::PressEnter {
+                    secondary: false,
+                    shift: false
+                }
+            ) {
+                this.generate(cx);
+            } else {
+                cx.notify();
+            }
+        });
         let svg = avatar_svg("blobatar", Generation::Two);
         Self {
+            dark: false,
             name,
             generation: Generation::Two,
             image: Arc::new(Image::from_bytes(ImageFormat::Svg, svg.as_bytes().to_vec())),
@@ -88,6 +103,7 @@ impl Probe {
 impl Render for Probe {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let input = self.name.clone();
+        let palette = Palette::new(self.dark);
         let generation = if self.generation == Generation::One {
             1
         } else {
@@ -95,10 +111,12 @@ impl Render for Probe {
         };
         div()
             .id("probe")
+            // Consume Base's propagated submit so Web beforeinput does not replay Enter.
+            .on_action(|_: &Enter, _, cx| cx.stop_propagation())
             .size_full()
             .overflow_y_scroll()
-            .bg(rgb(0xf0f0ee))
-            .text_color(rgb(0x1d1c1a))
+            .bg(palette.background)
+            .text_color(palette.text)
             .font_family(FONT)
             .p_6()
             .child(
@@ -111,14 +129,34 @@ impl Render for Probe {
                     .child(div().text_2xl().child("Blobatar / GPUI Base"))
                     .child("P0 技術検証 / Compatibility probe — not the full editor")
                     .child(
+                        control(
+                            "theme",
+                            if self.dark {
+                                "ライト / Light"
+                            } else {
+                                "ダーク / Dark"
+                            },
+                            palette,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.dark = !this.dark;
+                            Theme::global_mut(cx).appearance = if this.dark {
+                                ThemeAppearance::Dark
+                            } else {
+                                ThemeAppearance::Light
+                            };
+                            cx.notify();
+                        })),
+                    )
+                    .child(
                         div()
                             .flex()
                             .flex_col()
                             .gap_4()
                             .p_6()
-                            .bg(rgb(0xffffff))
+                            .bg(palette.surface)
                             .border_1()
-                            .border_color(rgb(0xdddcda))
+                            .border_color(palette.border)
                             .rounded(px(12.))
                             .child(
                                 div()
@@ -139,7 +177,7 @@ impl Render for Probe {
                                     .w_full()
                                     .px_3()
                                     .border_1()
-                                    .border_color(rgb(0xdddcda))
+                                    .border_color(palette.border)
                                     .rounded(px(8.))
                                     .styles(|styles| {
                                         styles.focused(|style| style.border_color(rgb(0xef551a)))
@@ -155,28 +193,31 @@ impl Render for Probe {
                                     .flex_wrap()
                                     .gap_2()
                                     .child(
-                                        control("generate", "生成する / Generate").on_click(
-                                            cx.listener(|this, _, _, cx| this.generate(cx)),
-                                        ),
+                                        control("generate", "生成する / Generate", palette)
+                                            .on_click(
+                                                cx.listener(|this, _, _, cx| this.generate(cx)),
+                                            ),
                                     )
-                                    .child(control("generation", "世代切替 / Generation").on_click(
-                                        cx.listener(|this, _, _, cx| {
-                                            this.generation = if this.generation == Generation::One
-                                            {
-                                                Generation::Two
-                                            } else {
-                                                Generation::One
-                                            };
-                                            this.generate(cx);
-                                        }),
-                                    ))
-                                    .child(control("copy", "SVGをコピー / Copy SVG").on_click(
-                                        cx.listener(|this, _, _, cx| {
-                                            cx.write_to_clipboard(ClipboardItem::new_string(
-                                                this.svg.clone(),
-                                            ));
-                                        }),
-                                    )),
+                                    .child(
+                                        control("generation", "世代切替 / Generation", palette)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.generation =
+                                                    if this.generation == Generation::One {
+                                                        Generation::Two
+                                                    } else {
+                                                        Generation::One
+                                                    };
+                                                this.generate(cx);
+                                            })),
+                                    )
+                                    .child(
+                                        control("copy", "SVGをコピー / Copy SVG", palette)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                                    this.svg.clone(),
+                                                ));
+                                            })),
+                                    ),
                             )
                             .child(format!("生成回数 / Activations: {}", self.activations)),
                     )
@@ -186,7 +227,35 @@ impl Render for Probe {
     }
 }
 
-fn control(id: &'static str, label: &'static str) -> Button {
+#[derive(Clone, Copy)]
+struct Palette {
+    background: Hsla,
+    surface: Hsla,
+    text: Hsla,
+    border: Hsla,
+}
+
+impl Palette {
+    fn new(dark: bool) -> Self {
+        let surface: Hsla = rgb(if dark { 0x1d1c1a } else { 0xffffff }).into();
+        Self {
+            background: if dark {
+                surface.blend(rgba(0xf2efea0a).into())
+            } else {
+                rgb(0xf0f0ee).into()
+            },
+            surface,
+            text: rgb(if dark { 0xf2efea } else { 0x1d1c1a }).into(),
+            border: if dark {
+                rgba(0xf2efea1f).into()
+            } else {
+                rgb(0xdddcda).into()
+            },
+        }
+    }
+}
+
+fn control(id: &'static str, label: &'static str, palette: Palette) -> Button {
     Button::new(id)
         .accessibility_label(label)
         .h(px(36.))
@@ -195,10 +264,10 @@ fn control(id: &'static str, label: &'static str) -> Button {
         .items_center()
         .rounded(px(8.))
         .border_1()
-        .border_color(rgb(0xdddcda))
-        .bg(rgb(0xffffff))
-        .text_color(rgb(0x1d1c1a))
-        .hover(|style| style.bg(rgb(0xf0f0ee)))
+        .border_color(palette.border)
+        .bg(palette.surface)
+        .text_color(palette.text)
+        .hover(move |style| style.bg(palette.background))
         .focus(|style| style.border_color(rgb(0xef551a)))
         .child(label)
 }
