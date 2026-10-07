@@ -1,0 +1,239 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  changes:
+    name: Select checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      native: ${{ steps.paths.outputs.native == 'true' || github.event_name == 'workflow_dispatch' }}
+      ui: ${{ steps.present.outputs.ui == 'true' && (steps.paths.outputs.ui == 'true' || github.event_name == 'workflow_dispatch') }}
+      worker: ${{ steps.present.outputs.worker == 'true' && (steps.paths.outputs.worker == 'true' || github.event_name == 'workflow_dispatch') }}
+      ui_exists: ${{ steps.present.outputs.ui }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
+        id: paths
+        with:
+          filters: |
+            native:
+              - '.github/**'
+              - 'Cargo.*'
+              - 'rust-toolchain.toml'
+              - '.cargo/**'
+              - 'crates/**'
+              - 'apps/**'
+              - 'vendor/**'
+              - 'docs/upstream-lock.json'
+            ui:
+              - '.github/**'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
+              - '.cargo/**'
+              - 'probes/gpui-base/**'
+              - 'crates/blobatar-core/**'
+              - 'crates/blobatar-ui/assets/fonts/**'
+            worker:
+              - '.github/**'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
+              - '.cargo/**'
+              - 'probes/worker/**'
+              - 'crates/blobatar-core/**'
+      - name: Detect optional probe workspaces
+        id: present
+        run: |
+          for entry in ui:gpui-base worker:worker; do
+            name=${entry%%:*}
+            directory=${entry#*:}
+            if [[ -f "probes/$directory/Cargo.toml" ]]; then
+              echo "$name=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=false" >> "$GITHUB_OUTPUT"
+              echo "Probe $directory is absent; its checks are not enabled on this revision." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+  native:
+    name: Native (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.ui == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Linux GPUI libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libxkbcommon-dev libxcb1-dev libxkbcommon-x11-dev
+      - name: Install repository Rust toolchain
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          key: native-${{ matrix.os }}
+          workspaces: |
+            . -> target
+            ${{ needs.changes.outputs.ui_exists == 'true' && 'probes/gpui-base -> target' || '' }}
+      - name: Check native workspace
+        if: needs.changes.outputs.native == 'true'
+        run: |
+          cargo fmt --all --check
+          cargo test --locked --workspace
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo build --locked --workspace
+      - name: Check GPUI Base native probe
+        if: needs.changes.outputs.ui == 'true'
+        working-directory: probes/gpui-base
+        run: |
+          cargo fmt --check
+          cargo test --locked
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo build --locked
+
+  web:
+    name: GPUI Web build
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchains
+        run: |
+          rustup show active-toolchain
+          rustup toolchain install nightly-2026-10-05 --profile minimal --component rust-src --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          key: web-nightly-2026-10-05-trunk-0.21.14
+          workspaces: probes/gpui-base -> target
+      - name: Install pinned Trunk
+        run: cargo install trunk --version 0.21.14 --locked
+      - name: Build browser release
+        working-directory: probes/gpui-base
+        env:
+          RUSTUP_TOOLCHAIN: nightly-2026-10-05
+        run: trunk build --release --locked
+
+  worker:
+    name: Worker tests and HTTP smoke
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+      CI: 'true'
+    defaults:
+      run:
+        shell: bash
+        working-directory: probes/worker
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: probes/worker/package-lock.json
+      - name: Install repository Rust toolchain and Wasm target
+        run: |
+          rustup show active-toolchain
+          rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          key: worker-build-0.8.0
+          workspaces: probes/worker -> target
+      - name: Install pinned Worker tools
+        run: |
+          cargo install worker-build --version 0.8.0 --locked
+          npm ci
+      - name: Check and build Worker
+        run: |
+          cargo fmt --check
+          cargo test --locked
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings
+          worker-build --release --locked
+      - name: Run local workerd HTTP checks
+        run: |
+          setsid npm exec --no -- wrangler dev --local > "$RUNNER_TEMP/worker.log" 2>&1 &
+          server_pid=$!
+          trap 'kill -TERM -- -"$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/worker.log"' EXIT
+          ready=false
+          for attempt in {1..60}; do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8787/healthz >/dev/null; then
+              ready=true
+              break
+            fi
+            kill -0 "$server_pid" || exit 1
+            sleep 1
+          done
+          [[ "$ready" == true ]] || { echo 'Worker readiness timed out' >&2; exit 1; }
+          timeout 60s python3 smoke.py
+
+  result:
+    name: CI result
+    if: always()
+    needs: [changes, native, web, worker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          jobs = json.loads(os.environ['NEEDS'])
+          assert jobs['changes']['result'] == 'success', 'Check selection failed'
+          selected = jobs['changes']['outputs']
+          expected = {
+              'native': selected['native'] == 'true' or selected['ui'] == 'true',
+              'web': selected['ui'] == 'true',
+              'worker': selected['worker'] == 'true',
+          }
+          for job, enabled in expected.items():
+              result = jobs[job]['result']
+              assert result == ('success' if enabled else 'skipped'), f'{job}: {result}'
+          PY

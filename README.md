@@ -176,6 +176,9 @@ disabled by default. A GPUI wall client is separate.
 
 ## Development
 
+See [CI checks and local reproduction](docs/ci.md) for automatic Linux/macOS,
+Web and Worker gates, change-based selection, and remaining manual UI checks.
+
 Rust is pinned by `rust-toolchain.toml`. Core logic uses `f64`, with no GPUI
 dependency. Native rendering converts to `f32` only at the drawing boundary.
 
