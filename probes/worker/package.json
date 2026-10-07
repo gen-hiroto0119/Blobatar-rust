@@ -1,0 +1,16 @@
+{
+  "name": "blobatar-worker-probe",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "smoke": "python3 smoke.py"
+  },
+  "devDependencies": {
+    "wrangler": "4.148.0"
+  },
+  "overrides": {
+    "miniflare@5.20261006.0-alpha": {
+      "sharp": "0.35.5"
+    }
+  }
+}

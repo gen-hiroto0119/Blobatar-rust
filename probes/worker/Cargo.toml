@@ -1,0 +1,24 @@
+[package]
+name = "blobatar-worker-probe"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+blobatar-core = { path = "../../crates/blobatar-core" }
+url = "=2.5.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+worker = "=0.8.0"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+opt-level = "s"

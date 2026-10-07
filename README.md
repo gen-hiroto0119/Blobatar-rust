@@ -2,8 +2,16 @@
 
 Independent Rust implementation of [Blobatar](https://blobatar.dev/), targeting
 native GPUI on macOS. This repository is under active development, **not a
-complete port**. Runtime components must not depend on JavaScript, a WebView,
+complete port**. Native runtime components must not depend on JavaScript, a WebView,
 or an upstream service.
+
+## Web / Worker compatibility probes (P0)
+
+Experimental, independent workspaces in [`probes/`](probes/README.md) test
+gpui-base with GPUI Web and a workers-rs SVG endpoint using the existing Rust
+generation core. They do not replace the native editor or wall and are not
+deployed. Browser/Worker builds use their platform's generated JavaScript glue;
+the native application remains Rust/GPUI only.
 
 ## Generation 1 / 2 editor
 

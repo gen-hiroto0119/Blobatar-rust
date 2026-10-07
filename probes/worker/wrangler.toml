@@ -1,0 +1,13 @@
+name = "blobatar-worker-probe"
+main = "build/worker/shim.mjs"
+compatibility_date = "2025-09-17"
+workers_dev = false
+preview_urls = false
+
+[build]
+command = "worker-build --release"
+
+[dev]
+ip = "127.0.0.1"
+port = 8787
+local_protocol = "http"
