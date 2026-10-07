@@ -1,0 +1,27 @@
+[package]
+name = "blobatar-gpui-base-probe"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Keep the experimental GPUI version out of the native product's lockfile.
+[workspace]
+
+[dependencies]
+blobatar-core = { path = "../../crates/blobatar-core" }
+gpui = { package = "gpui-pre", version = "=0.3.8", default-features = false }
+gpui-base = "=0.7.1"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit", "x11", "runtime_shaders"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8" }
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+opt-level = "s"
+strip = true
