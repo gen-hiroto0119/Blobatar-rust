@@ -1,0 +1,16 @@
+{
+  "name": "blobatar-web-bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build-cloud.mjs",
+    "check": "node --check src/cloud.js && node --check build-cloud.mjs",
+    "test": "node --test src/cloud.test.js"
+  },
+  "dependencies": {
+    "@neondatabase/neon-js": "0.7.0-beta"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

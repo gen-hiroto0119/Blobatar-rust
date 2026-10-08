@@ -1,3 +1,4 @@
+#[cfg(not(target_family = "wasm"))]
 use std::{io::Write, path::Path};
 
 use blobatar_core::{Avatar, Generation, Options, traits::Override};
@@ -136,6 +137,7 @@ impl Settings {
 }
 
 /// Write in the destination directory, then atomically replace the destination.
+#[cfg(not(target_family = "wasm"))]
 pub fn save_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let parent = path
         .parent()

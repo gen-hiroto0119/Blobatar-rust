@@ -57,11 +57,19 @@ jobs:
             ui:
               - '.github/**'
               - 'Cargo.toml'
+              - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.cargo/**'
               - 'probes/gpui-base/**'
               - 'crates/blobatar-core/**'
-              - 'crates/blobatar-ui/assets/fonts/**'
+              - 'crates/blobatar-ui/**'
+              - 'crates/blobatar-export/**'
+              - 'crates/blobatar-gpui/**'
+              - 'crates/blobatar-motion/**'
+              - 'apps/web/**'
+              - 'tools/build-web.sh'
+              - 'vercel.json'
+              - 'database/**'
             worker:
               - '.github/**'
               - 'Cargo.toml'
@@ -131,6 +139,19 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: blobatar-test
+          POSTGRES_DB: blobatar_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -139,15 +160,44 @@ jobs:
       - name: Install Rust toolchains
         run: |
           rustup show active-toolchain
-          rustup toolchain install nightly-2026-10-05 --profile minimal --component rust-src --target wasm32-unknown-unknown
+          rustup toolchain install nightly-2026-10-05 --profile minimal --component rust-src --component clippy --target wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: web-nightly-2026-10-05-trunk-0.21.14
-          workspaces: probes/gpui-base -> target
+          workspaces: |
+            . -> target
+            probes/gpui-base -> target
       - name: Install pinned Trunk
         run: cargo install trunk --version 0.21.14 --locked
       - name: Build browser release
         working-directory: probes/gpui-base
+        env:
+          RUSTUP_TOOLCHAIN: nightly-2026-10-05
+        run: trunk build --release --locked
+
+      - name: Check shared browser editor
+        run: cargo +nightly-2026-10-05 clippy --locked -p blobatar-web --target wasm32-unknown-unknown -- -D warnings
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Build and test cloud bridge
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+      - name: Verify private My Wall policies
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: blobatar-test
+          PGDATABASE: blobatar_test
+        run: psql -v ON_ERROR_STOP=1 -f database/tests/ownership.sql
+      - name: Build shared browser editor
+        working-directory: apps/web
         env:
           RUSTUP_TOOLCHAIN: nightly-2026-10-05
         run: trunk build --release --locked

@@ -9,4 +9,6 @@ blobatar-core = { path = "../blobatar-core" }
 serde.workspace = true
 serde_json.workspace = true
 resvg = { version = "=0.45.1", default-features = false }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 tempfile = "3"

@@ -8,7 +8,7 @@ change branch protection. Actions are pinned by commit, Rust comes from
 | Check | Scope |
 | --- | --- |
 | Native (Ubuntu 24.04 / macOS 15) | Workspace fmt, tests, clippy, build; the GPUI Base probe's native checks when present and affected |
-| GPUI Web build | Pinned nightly `nightly-2026-10-05`, Trunk `0.21.14`, release Wasm build |
+| GPUI Web build | Pinned nightly `nightly-2026-10-05`, Trunk `0.21.14`, GPUI Base release build, shared editor Wasm Clippy/release build, cloud bridge tests, disposable Postgres RLS ownership tests |
 | Worker tests and HTTP smoke | Pinned Node `24.19.0`, worker-build `0.8.0`, native tests, native/Wasm clippy, release build, real local workerd HTTP smoke |
 | CI result | Stable aggregate gate: every selected job must succeed; a selected job being skipped or cancelled is a failure |
 
@@ -21,8 +21,9 @@ Merging the probes triggers their checks on the resulting `main` revision.
 
 - Changes to native crates, apps, vendored code, root Cargo files or the pinned
   upstream provenance select native checks. Core and root `Cargo.toml` changes
-  also select both probes; root `Cargo.lock` changes select native checks only
-  because each probe has its own lockfile.
+  also select both probes. Root `Cargo.lock` changes select native and GPUI Web
+  checks, but not Worker checks, because the Web app uses the root lockfile while
+  Worker remains an independent workspace.
 - GPUI probe or bundled-font changes select native probe checks and the Web build.
 - Worker changes select only Worker checks unless another affected path matches.
 - CI or Rust toolchain/configuration changes select every available workspace.

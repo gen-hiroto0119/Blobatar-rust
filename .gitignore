@@ -1,4 +1,9 @@
 /target/
+/apps/web/dist/
+/apps/web/node_modules/
+/apps/web/assets/cloud-client.js
+/apps/web/.env*
+/.vercel/
 /.reference/
 *.sqlite3
 *.sqlite3-shm

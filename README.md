@@ -13,6 +13,24 @@ generation core. They do not replace the native editor or wall and are not
 deployed. Browser/Worker builds use their platform's generated JavaScript glue;
 the native application remains Rust/GPUI only.
 
+## Experimental Web editor
+
+`apps/web` runs the shared GPUI editor in the browser. Build and serve it locally:
+
+```sh
+bash tools/build-web.sh
+cd apps/web
+RUSTUP_TOOLCHAIN=nightly-2026-10-05 trunk serve
+```
+
+Trunk serves the editor at `http://127.0.0.1:8082/`. The Vercel configuration
+declares a static build command, output directory and cross-origin isolation
+headers, but a cold hosted build has not been verified. The optional private My
+Wall uses GitHub sign-in through Neon Managed Better Auth and the Neon Data API.
+Follow [the cloud setup guide](docs/web.md) to enable it; without configuration,
+the editor and local file downloads still work. The integration requires live
+OAuth/Neon validation before public release.
+
 ## Generation 1 / 2 editor
 
 Open **エディターを開く / Open editor** in the demo, or run:
