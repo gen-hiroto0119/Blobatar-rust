@@ -51,6 +51,7 @@ pub struct TextInput {
 
 pub(crate) enum InputEvent {
     Edited,
+    #[cfg(not(target_family = "wasm"))]
     CaretMoved(Point<Pixels>),
 }
 impl EventEmitter<InputEvent> for TextInput {}
@@ -118,6 +119,9 @@ impl TextInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        #[cfg(target_family = "wasm")]
+        self.focus_handle.focus(_window, cx);
+        #[cfg(not(target_family = "wasm"))]
         self.focus_handle.focus(_window);
         self.is_selecting = true;
 
@@ -623,6 +627,17 @@ impl Element for TextElement {
             window.paint_quad(selection)
         }
         let line = prepaint.line.take().unwrap();
+        #[cfg(target_family = "wasm")]
+        line.paint(
+            point(bounds.left() - prepaint.scroll_x, bounds.top()),
+            window.line_height(),
+            gpui::TextAlign::Left,
+            None,
+            window,
+            cx,
+        )
+        .unwrap();
+        #[cfg(not(target_family = "wasm"))]
         line.paint(
             point(bounds.left() - prepaint.scroll_x, bounds.top()),
             window.line_height(),
@@ -637,7 +652,7 @@ impl Element for TextElement {
             window.paint_quad(cursor);
         }
 
-        let changed_caret = self.input.update(cx, |input, _cx| {
+        let _changed_caret = self.input.update(cx, |input, _cx| {
             let x = (line.x_for_index(input.display_index(input.cursor_offset()))
                 - prepaint.scroll_x)
                 .clamp(px(0.0), bounds.size.width.max(px(0.0)));
@@ -649,7 +664,8 @@ impl Element for TextElement {
             input.scroll_x = prepaint.scroll_x;
             changed.then_some(caret)
         });
-        if let Some(caret) = changed_caret {
+        #[cfg(not(target_family = "wasm"))]
+        if let Some(caret) = _changed_caret {
             let input = self.input.downgrade();
             cx.defer(move |cx| {
                 let _ = input.update(cx, |_, cx| cx.emit(InputEvent::CaretMoved(caret)));
@@ -777,6 +793,7 @@ impl TextInput {
         cx.notify();
     }
 
+    #[cfg(not(target_family = "wasm"))]
     pub fn secret(mut self) -> Self {
         self.secret = true;
         self.masked = true;
@@ -784,6 +801,7 @@ impl TextInput {
         self
     }
 
+    #[cfg(not(target_family = "wasm"))]
     pub fn set_masked(&mut self, masked: bool, cx: &mut Context<Self>) {
         self.masked = self.secret && masked;
         self.last_layout = None;
@@ -837,6 +855,8 @@ pub fn edit_menu() -> gpui::Menu {
             MenuItem::separator(),
             MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
         ],
+        #[cfg(target_family = "wasm")]
+        disabled: false,
     }
 }
 

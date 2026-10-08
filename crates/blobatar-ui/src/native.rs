@@ -1,23 +1,29 @@
+use std::{collections::BTreeMap, ops::Range, sync::Arc};
+#[cfg(not(target_family = "wasm"))]
 use std::{
-    collections::BTreeMap,
     io::Read,
-    ops::Range,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use blobatar_core::{Avatar, Background, Expression};
-use blobatar_export::{Motion, Settings, save_atomic};
+use blobatar_export::Motion;
+#[cfg(not(target_family = "wasm"))]
+use blobatar_export::{Settings, save_atomic};
+#[cfg(not(target_family = "wasm"))]
+use blobatar_gpui::gpui;
 use blobatar_gpui::{
     Animate, AnimatedBlobatar, Blobatar, Drawing,
     gpui::{
-        self, AnyElement, App, Bounds, ClipboardItem, Context, Entity, FocusHandle, Focusable,
-        FontWeight, HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-        Pixels, Render, SharedString, StyledText, Subscription, Window, canvas, div, prelude::*,
-        px, relative, rgb,
+        AnyElement, App, Bounds, Context, Entity, FocusHandle, Focusable, FontWeight,
+        HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Render,
+        SharedString, StyledText, Subscription, Window, canvas, div, prelude::*, px, relative, rgb,
     },
 };
 use rand::Rng;
+
+#[cfg(target_family = "wasm")]
+#[path = "cloud_editor.rs"]
+mod cloud_editor;
 
 use crate::{
     advanced_json::AdvancedJsonDraft,
@@ -56,6 +62,8 @@ pub struct Editor {
     busy: bool,
     appearance: Appearance,
     copied: bool,
+    #[cfg(target_family = "wasm")]
+    wall: crate::cloud::Wall,
 }
 
 impl Editor {
@@ -92,9 +100,13 @@ impl Editor {
             busy: false,
             appearance: Appearance::default(),
             copied: false,
+            #[cfg(target_family = "wasm")]
+            wall: crate::cloud::Wall::default(),
         };
         editor.sync_appearance(cx);
         editor.refresh(true, cx);
+        #[cfg(target_family = "wasm")]
+        editor.init_cloud(cx);
         editor
     }
 
@@ -386,6 +398,7 @@ impl Editor {
             })
     }
 
+    #[cfg(not(target_family = "wasm"))]
     fn export(&mut self, format: Export, cx: &mut Context<Self>) {
         if self.busy {
             return;
@@ -429,6 +442,7 @@ impl Editor {
         cx.notify();
     }
 
+    #[cfg(not(target_family = "wasm"))]
     fn load(&mut self, cx: &mut Context<Self>) {
         if self.busy {
             return;
@@ -479,6 +493,111 @@ impl Editor {
         })
         .detach();
         cx.notify();
+    }
+
+    #[cfg(target_family = "wasm")]
+    fn export(&mut self, format: Export, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        let settings = &self.state.settings;
+        let (bytes, filename, mime) = match format {
+            Export::Svg => (
+                settings.svg().map(String::into_bytes),
+                "blobatar.svg",
+                "image/svg+xml",
+            ),
+            Export::Png => (settings.png(512), "blobatar.png", "image/png"),
+            Export::Settings => (
+                settings.to_json().map(String::into_bytes),
+                "blobatar.json",
+                "application/json",
+            ),
+        };
+        self.status = match bytes.and_then(|bytes| crate::browser::save(&bytes, filename, mime)) {
+            Ok(()) => "ダウンロードを開始 / Download started".into(),
+            Err(error) => format!("保存失敗 / Save failed: {error}"),
+        };
+        cx.notify();
+    }
+
+    #[cfg(target_family = "wasm")]
+    fn load(&mut self, cx: &mut Context<Self>) {
+        if self.busy || self.wall.busy {
+            return;
+        }
+        self.busy = true;
+        self.status = "設定を選択 / Choose settings".into();
+        let prompt = crate::browser::choose_settings();
+        cx.spawn(async move |this, cx| {
+            let result = crate::browser::load(prompt).await;
+            let _ = this.update(cx, |this, cx| {
+                this.busy = false;
+                match result {
+                    Ok(Some(settings)) => {
+                        this.wall.selected = None;
+                        this.state.settings = settings;
+                        let name = this.state.settings.name.clone();
+                        this.name.update(cx, |input, cx| input.set_text(name, cx));
+                        this.refresh_with_advanced_sync(true, true, cx);
+                        this.status = "読込完了 / Loaded".into();
+                    }
+                    Ok(None) => this.status = "取消 / Cancelled".into(),
+                    Err(error) => this.status = format!("読込失敗 / Load failed: {error}"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn copy_code(&mut self, cx: &mut Context<Self>) {
+        #[cfg(not(target_family = "wasm"))]
+        {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(self.code.clone()));
+            self.copied = true;
+            self.status = "コピー完了 / Copied".into();
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            let code = self.code.clone();
+            let copy = crate::browser::copy_text(&code);
+            cx.spawn(async move |this, cx| {
+                let result = match copy {
+                    Ok(promise) => wasm_bindgen_futures::JsFuture::from(promise).await,
+                    Err(error) => Err(error),
+                };
+                let _ = this.update(cx, |this, cx| {
+                    match result {
+                        Ok(_) => {
+                            this.copied = this.code == code;
+                            this.status = "コピー完了 / Copied".into();
+                        }
+                        Err(error) => {
+                            this.copied = false;
+                            this.status = format!(
+                                "コピー失敗 / Copy failed: {}",
+                                crate::browser::error(error)
+                            );
+                        }
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn wall_toggle(&self, _: &mut Context<Self>) -> Option<AnyElement> {
+        None
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn cloud_save_controls(&self, _: &mut Context<Self>) -> Option<AnyElement> {
+        None
     }
 
     fn preview_panel(&self, compact: bool, cx: &mut Context<Self>) -> impl IntoElement {
@@ -589,12 +708,7 @@ impl Editor {
                 },
                 self.copied,
                 cx,
-                |this, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(this.code.clone()));
-                    this.copied = true;
-                    this.status = "コピー完了 / Copied".into();
-                    cx.notify();
-                },
+                |this, _, cx| this.copy_code(cx),
             ))
             .child(
                 div()
@@ -794,6 +908,10 @@ impl Focusable for Editor {
 
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(target_family = "wasm")]
+        if self.wall.open {
+            return self.render_wall(cx).into_any_element();
+        }
         let palette = self.appearance.palette();
         let compact = window.viewport_size().width < px(980.0);
         div()
@@ -811,8 +929,14 @@ impl Render for Editor {
             .on_key_down(|event, window, cx| {
                 if event.keystroke.key == "tab" {
                     if event.keystroke.modifiers.shift {
+                        #[cfg(target_family = "wasm")]
+                        window.focus_prev(cx);
+                        #[cfg(not(target_family = "wasm"))]
                         window.focus_prev();
                     } else {
+                        #[cfg(target_family = "wasm")]
+                        window.focus_next(cx);
+                        #[cfg(not(target_family = "wasm"))]
                         window.focus_next();
                     }
                     cx.stop_propagation();
@@ -838,16 +962,20 @@ impl Render for Editor {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
+                    .gap_2()
                     .justify_between()
                     .items_center()
                     .flex_shrink_0()
-                    .h(px(48.0))
+                    .min_h(px(48.0))
+                    .py_2()
                     .px_6()
                     .bg(palette.surface)
                     .border_b_1()
                     .border_color(palette.border)
                     .child(div().font_family(theme::HEADING_FONT).font_weight(FontWeight::SEMIBOLD)
                         .child("Blobatar").child(div().ml_4().text_color(palette.muted).child("/ Editor" )).flex())
+                    .children(self.wall_toggle(cx))
                     .child(self.button(
                         "editor-theme",
                         if self.appearance == Appearance::Light { "ダーク / Dark" } else { "ライト / Light" },
@@ -903,6 +1031,7 @@ impl Render for Editor {
                             )),
                     ),
             )
+            .children(self.cloud_save_controls(cx))
             .child(div().flex_shrink_0().text_size(px(12.0)).line_height(px(18.0))
                 .text_color(palette.muted).child(if self.status.is_empty() {
                 format!(
@@ -922,10 +1051,11 @@ impl Render for Editor {
                     .when(compact, |panels| panels.flex_col().overflow_y_scroll())
                     .child(self.preview_panel(compact, cx))
                     .child(self.controls(compact, cx)),
-            ))
+            )).into_any_element()
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn home_directory() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)

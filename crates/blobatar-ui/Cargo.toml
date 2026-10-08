@@ -8,9 +8,17 @@ license.workspace = true
 blobatar-core = { path = "../blobatar-core" }
 blobatar-export = { path = "../blobatar-export" }
 blobatar-gpui = { path = "../blobatar-gpui" }
-blobatar-wall = { path = "../blobatar-wall" }
 unicode-segmentation = "1.12"
 rand = "0.8"
 rustc_lexer = "=0.1.0"
 serde.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+blobatar-wall = { path = "../blobatar-wall" }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"

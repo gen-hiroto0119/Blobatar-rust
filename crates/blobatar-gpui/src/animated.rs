@@ -1,7 +1,8 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+#[cfg(not(target_family = "wasm"))]
+use std::time::Instant;
+use std::{sync::Arc, time::Duration};
+#[cfg(target_family = "wasm")]
+use web_time::Instant;
 
 use blobatar_core::{
     Avatar, Expression, Generation, Options, color::Palette, geometry::Bounds as FaceBounds,
