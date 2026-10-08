@@ -974,7 +974,7 @@ impl Render for Editor {
                     .border_b_1()
                     .border_color(palette.border)
                     .child(div().font_family(theme::HEADING_FONT).font_weight(FontWeight::SEMIBOLD)
-                        .child("Blobatar").child(div().ml_4().text_color(palette.muted).child("/ Editor" )).flex())
+                        .child("Blobatar").flex())
                     .children(self.wall_toggle(cx))
                     .child(self.button(
                         "editor-theme",
